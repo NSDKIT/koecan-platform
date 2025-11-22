@@ -27,23 +27,30 @@ export default function LoginPage() {
       try {
         const result = await loginAction(formData);
         
+        console.log('ログイン結果:', result);
+        
         if (result) {
           if (!result.success) {
             setError(result.message || 'ログインに失敗しました');
-          } else if (result.redirectUrl) {
-            // リダイレクトURLが返された場合はリダイレクト
-            router.push(result.redirectUrl);
-            router.refresh();
-          } else {
-            // リダイレクトURLがない場合もページをリロード
-            router.refresh();
+            return;
           }
+          
+          if (result.redirectUrl) {
+            // リダイレクトURLが返された場合はリダイレクト
+            console.log('リダイレクト先:', result.redirectUrl);
+            
+            // window.locationを使用して確実にリダイレクト
+            window.location.href = result.redirectUrl;
+            return;
+          }
+          
+          // リダイレクトURLがない場合はダッシュボードにリダイレクト
+          console.log('リダイレクトURLがないため、デフォルトでダッシュボードにリダイレクト');
+          window.location.href = '/dashboard';
         } else {
-          // resultがundefinedの場合（リダイレクトが実行された場合）
-          // 少し待ってからページをリロード
-          setTimeout(() => {
-            router.refresh();
-          }, 500);
+          // resultがundefinedの場合はダッシュボードにリダイレクト
+          console.log('結果がundefinedのため、デフォルトでダッシュボードにリダイレクト');
+          window.location.href = '/dashboard';
         }
       } catch (err) {
         console.error('ログインエラー:', err);
