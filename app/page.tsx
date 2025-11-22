@@ -31,10 +31,16 @@ export default function LandingPage() {
           </p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
             <Link className="button primary" href="/dashboard">
-              モニターダッシュボードを見る
+              モニターダッシュボード
+            </Link>
+            <Link className="button secondary" href="/client">
+              企業ダッシュボード
+            </Link>
+            <Link className="button secondary" href="/support">
+              サポートダッシュボード
             </Link>
             <Link className="button ghost" href="/admin">
-              運用・お知らせ管理を見る
+              管理者ダッシュボード
             </Link>
           </div>
         </div>

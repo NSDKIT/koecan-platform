@@ -52,6 +52,19 @@ export interface AdminDashboardData {
   policyDocuments: PolicyDocument[];
 }
 
+export interface ClientDashboardData {
+  surveys: Survey[];
+  totalSurveys: number;
+  totalResponses: number;
+  activeSurveys: number;
+}
+
+export interface SupportDashboardData {
+  supportTickets: SupportTicket[];
+  activeChats: number;
+  pendingTickets: number;
+}
+
 const fallbackMonitor: MonitorDashboardData = {
   profile: mockMonitorProfile,
   surveys: mockSurveys,
@@ -166,6 +179,70 @@ export async function fetchAdminDashboardData(): Promise<AdminDashboardData> {
   } catch (error) {
     console.warn('Supabase admin fetch failed. Falling back to mock data.', error);
     return fallbackAdmin;
+  }
+}
+
+const fallbackClient: ClientDashboardData = {
+  surveys: mockSurveys,
+  totalSurveys: mockSurveys.length,
+  totalResponses: 0,
+  activeSurveys: mockSurveys.filter((s) => s.status === 'open').length
+};
+
+export async function fetchClientDashboardData(userId?: string): Promise<ClientDashboardData> {
+  if (!isSupabaseConfigured() || !userId) {
+    return fallbackClient;
+  }
+
+  try {
+    const supabase = getSupabaseServiceRole();
+    const surveyRes = await supabase.from('surveys').select('*').eq('client_id', userId).order('created_at', { ascending: false });
+
+    if (surveyRes.error) {
+      throw surveyRes.error;
+    }
+
+    const surveys = (surveyRes.data ?? []).map(mapSurvey);
+    return {
+      surveys,
+      totalSurveys: surveys.length,
+      totalResponses: 0, // TODO: survey_responsesテーブルから集計
+      activeSurveys: surveys.filter((s) => s.status === 'open').length
+    };
+  } catch (error) {
+    console.warn('Supabase client fetch failed. Falling back to mock data.', error);
+    return fallbackClient;
+  }
+}
+
+const fallbackSupport: SupportDashboardData = {
+  supportTickets: mockSupportTickets,
+  activeChats: 0,
+  pendingTickets: mockSupportTickets.filter((t) => t.status === 'waiting').length
+};
+
+export async function fetchSupportDashboardData(): Promise<SupportDashboardData> {
+  if (!isSupabaseConfigured()) {
+    return fallbackSupport;
+  }
+
+  try {
+    const supabase = getSupabaseServiceRole();
+    const ticketRes = await supabase.from('support_tickets').select('*').order('created_at', { ascending: false });
+
+    if (ticketRes.error) {
+      throw ticketRes.error;
+    }
+
+    const supportTickets = (ticketRes.data ?? []).map(mapSupportTicket);
+    return {
+      supportTickets,
+      activeChats: 0, // TODO: chat_roomsテーブルから集計
+      pendingTickets: supportTickets.filter((t) => t.status === 'waiting').length
+    };
+  } catch (error) {
+    console.warn('Supabase support fetch failed. Falling back to mock data.', error);
+    return fallbackSupport;
   }
 }
 

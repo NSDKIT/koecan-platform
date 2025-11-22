@@ -47,11 +47,30 @@ export async function loginAction(formData: FormData) {
     password: formData.get('password')
   });
   const supabase = clientForServerAction();
-  const { error } = await supabase.auth.signInWithPassword(payload);
+  const { data, error } = await supabase.auth.signInWithPassword(payload);
   if (error) {
     return { success: false, message: error.message };
   }
-  redirect('/dashboard');
+  
+  // ユーザーのロールを取得（user_metadataから取得、なければデフォルトでmonitor）
+  const role = (data.user.user_metadata?.role || 'monitor') as 'monitor' | 'client' | 'admin' | 'support';
+  
+  // ロールに応じてリダイレクト先を決定
+  switch (role) {
+    case 'admin':
+      redirect('/admin');
+      break;
+    case 'client':
+      redirect('/client');
+      break;
+    case 'support':
+      redirect('/support');
+      break;
+    case 'monitor':
+    default:
+      redirect('/dashboard');
+      break;
+  }
 }
 
 export async function registerAction(formData: FormData) {
