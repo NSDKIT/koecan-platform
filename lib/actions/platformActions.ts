@@ -558,6 +558,8 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
         }
       } else {
         // Service Roleが利用できない場合は通常のsignUpを使用
+        // 注意: signUpを使用する場合、メール確認が必要になる可能性があります
+        console.log('Service Roleが利用できないため、通常のsignUpを使用:', { email: payload.email });
         const signUpResult = await supabase.auth.signUp({
           email: payload.email,
           password: payload.password,
@@ -565,7 +567,8 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
             data: { 
               referral_code: payload.referralCode || '',
               role: 'monitor'
-            }
+            },
+            emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/login`
           }
         });
         
@@ -576,7 +579,34 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
           }
           return { success: false, message: signUpResult.error.message || '登録に失敗しました。' };
         }
+        
         createdUser = signUpResult.data?.user || null;
+        
+        console.log('signUp結果:', {
+          hasUser: !!createdUser,
+          userId: createdUser?.id,
+          email: createdUser?.email,
+          emailConfirmed: createdUser?.email_confirmed_at ? '確認済み' : '未確認',
+          sessionCreated: !!signUpResult.data?.session
+        });
+        
+        // signUpを使用した場合、メール確認が必要な可能性がある
+        // セッションが作成されている場合は、そのままログイン状態
+        if (!signUpResult.data?.session && !createdUser?.email_confirmed_at) {
+          console.warn('signUpを使用したが、メール確認が必要な状態です。');
+          // メール確認が必要な場合は、Service Roleを使って確認状態を更新
+          if (process.env.SUPABASE_SERVICE_ROLE_KEY && createdUser?.id) {
+            try {
+              const serviceRoleSupabaseForConfirm = getSupabaseServiceRole();
+              await serviceRoleSupabaseForConfirm.auth.admin.updateUserById(createdUser.id, {
+                email_confirm: true
+              });
+              console.log('メール確認状態を更新しました:', createdUser.id);
+            } catch (confirmError) {
+              console.error('メール確認状態の更新エラー:', confirmError);
+            }
+          }
+        }
       }
 
       if (!createdUser) {
@@ -742,6 +772,10 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
       });
       
       try {
+        // ユーザー作成後、少し待ってからログインを試行（データベースへの反映を待つ）
+        console.log('登録後の自動ログインを開始:', { email: payload.email, userId });
+        await new Promise(resolve => setTimeout(resolve, 2000)); // 2秒待機
+        
         // 通常のクライアントでログインしてセッションを確立
         const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
           email: payload.email,
@@ -751,21 +785,26 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
         if (loginError || !loginData.user) {
           console.error('登録後の自動ログインに失敗:', {
             error: loginError?.message,
-            hasUser: !!loginData?.user
+            errorStatus: loginError?.status,
+            errorName: loginError?.name,
+            hasUser: !!loginData?.user,
+            userId
           });
           
-          // ログインに失敗した場合は、ログインページにリダイレクト
-          // ユーザーは手動でログインする必要がある
+          // ログインに失敗した場合でも、ユーザーは作成されているので
+          // ログインページにリダイレクトして、手動でログインできるようにする
+          // パスワードは正しく保存されているはずなので、手動ログインで確認する
           return {
             success: true,
-            message: '登録が完了しました。ログインページからログインしてください。',
+            message: `登録が完了しました。ログインページからログインしてください。${loginError ? ` (エラー: ${loginError.message})` : ''}`,
             redirectUrl: '/login?registered=true'
           };
         }
         
         console.log('登録後の自動ログイン成功:', {
           userId: loginData.user.id,
-          email: loginData.user.email
+          email: loginData.user.email,
+          emailConfirmed: loginData.user.email_confirmed_at ? '確認済み' : '未確認'
         });
         
         // ログイン成功時はダッシュボードにリダイレクト
@@ -775,9 +814,15 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
           redirectUrl: '/dashboard'
         };
       } catch (loginException) {
-        console.error('登録後の自動ログインで例外が発生:', loginException);
+        console.error('登録後の自動ログインで例外が発生:', {
+          error: loginException instanceof Error ? loginException.message : String(loginException),
+          stack: loginException instanceof Error ? loginException.stack : undefined,
+          userId,
+          email: payload.email
+        });
         
-        // ログインに失敗した場合は、ログインページにリダイレクト
+        // 例外が発生した場合でも、ユーザーは作成されているので
+        // ログインページにリダイレクトして、手動でログインできるようにする
         return {
           success: true,
           message: '登録が完了しました。ログインページからログインしてください。',
