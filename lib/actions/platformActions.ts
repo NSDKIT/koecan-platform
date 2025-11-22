@@ -295,36 +295,107 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
     
     try {
       // 1. ユーザーを作成
-      const { data, error } = await supabase.auth.signUp({
-        email: payload.email,
-        password: payload.password,
-        options: {
-          data: { 
-            referral_code: payload.referralCode || '',
-            role: 'monitor' // デフォルトでモニターロールを設定
+      // Service Roleが利用可能な場合は、Service Roleを使ってユーザーを作成（メール確認をスキップ）
+      let createdUser: { id: string } | null = null;
+      let serviceRoleSupabaseForUser: ReturnType<typeof getSupabaseServiceRole> | null = null;
+      
+      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        try {
+          serviceRoleSupabaseForUser = getSupabaseServiceRole();
+          
+          // Service Roleを使ってユーザーを作成（メール確認をスキップ）
+          const { data: adminUserData, error: adminError } = await serviceRoleSupabaseForUser.auth.admin.createUser({
+            email: payload.email,
+            password: payload.password,
+            email_confirm: true, // メール確認をスキップして即座にユーザーを作成
+            user_metadata: {
+              referral_code: payload.referralCode || '',
+              role: 'monitor'
+            }
+          });
+          
+          if (!adminError && adminUserData?.user) {
+            createdUser = adminUserData.user;
+            console.log('Service Roleでユーザーを作成しました:', createdUser.id);
+          } else {
+            console.warn('Service Roleでのユーザー作成に失敗、通常のsignUpを試行:', adminError);
+            // Service Roleでの作成に失敗した場合は通常のsignUpを試行
+            const signUpResult = await supabase.auth.signUp({
+              email: payload.email,
+              password: payload.password,
+              options: {
+                data: { 
+                  referral_code: payload.referralCode || '',
+                  role: 'monitor'
+                }
+              }
+            });
+            
+            if (signUpResult.error) {
+              throw signUpResult.error;
+            }
+            createdUser = signUpResult.data?.user || null;
           }
+        } catch (serviceRoleError) {
+          console.warn('Service Roleでのユーザー作成エラー、通常のsignUpを試行:', serviceRoleError);
+          // Service Roleでの作成に失敗した場合は通常のsignUpを試行
+          const signUpResult = await supabase.auth.signUp({
+            email: payload.email,
+            password: payload.password,
+            options: {
+              data: { 
+                referral_code: payload.referralCode || '',
+                role: 'monitor'
+              }
+            }
+          });
+          
+          if (signUpResult.error) {
+            // エラー処理
+            console.error('登録エラー:', signUpResult.error);
+            if (signUpResult.error.message.includes('already registered') || signUpResult.error.message.includes('already exists')) {
+              return { success: false, message: 'このメールアドレスは既に登録されています。ログインページからログインしてください。' };
+            }
+            return { success: false, message: signUpResult.error.message || '登録に失敗しました。' };
+          }
+          createdUser = signUpResult.data?.user || null;
         }
-      });
-
-      if (error) {
-        console.error('登録エラー:', error);
-        // ユーザーが既に存在する場合など、より詳細なエラーメッセージを返す
-        if (error.message.includes('already registered') || error.message.includes('already exists')) {
-          return { success: false, message: 'このメールアドレスは既に登録されています。ログインページからログインしてください。' };
+      } else {
+        // Service Roleが利用できない場合は通常のsignUpを使用
+        const signUpResult = await supabase.auth.signUp({
+          email: payload.email,
+          password: payload.password,
+          options: {
+            data: { 
+              referral_code: payload.referralCode || '',
+              role: 'monitor'
+            }
+          }
+        });
+        
+        if (signUpResult.error) {
+          console.error('登録エラー:', signUpResult.error);
+          if (signUpResult.error.message.includes('already registered') || signUpResult.error.message.includes('already exists')) {
+            return { success: false, message: 'このメールアドレスは既に登録されています。ログインページからログインしてください。' };
+          }
+          return { success: false, message: signUpResult.error.message || '登録に失敗しました。' };
         }
-        return { success: false, message: error.message || '登録に失敗しました。' };
+        createdUser = signUpResult.data?.user || null;
       }
 
-      if (!data.user) {
+      if (!createdUser) {
         return { success: false, message: 'ユーザーの作成に失敗しました。' };
       }
 
+      // ユーザーが作成されたので、プロフィールを作成
+      const userId = createdUser.id;
+      
       // 2. monitor_profilesテーブルに基本情報を保存
       // 紹介コードを生成（なければランダム生成）
       const generatedReferralCode = payload.referralCode || `KOECAN-${randomUUID().substring(0, 8).toUpperCase()}`;
       
       const profileData = {
-        user_id: data.user.id,
+        user_id: userId,
         name: payload.name,
         email: payload.email,
         occupation: payload.occupation,
@@ -406,10 +477,10 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
         console.error('Service Roleを使用したプロフィール作成エラー:', serviceRoleError);
         
         // Service Roleでの作成に失敗した場合、ユーザーを削除してエラーを返す
-        if (serviceRoleSupabase) {
+        if (serviceRoleSupabase && createdUser) {
           try {
-            await serviceRoleSupabase.auth.admin.deleteUser(data.user.id);
-            console.log('プロフィール作成失敗のため、作成されたユーザーを削除しました:', data.user.id);
+            await serviceRoleSupabase.auth.admin.deleteUser(userId);
+            console.log('プロフィール作成失敗のため、作成されたユーザーを削除しました:', userId);
           } catch (deleteError) {
             console.error('ユーザー削除エラー（無視）:', deleteError);
           }
@@ -426,10 +497,10 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
         console.error('プロフィール作成エラー:', profileInsertResult.error);
         
         // プロフィール作成に失敗した場合、作成されたユーザーを削除して登録を失敗とする
-        if (serviceRoleSupabase) {
+        if (serviceRoleSupabase && createdUser) {
           try {
-            await serviceRoleSupabase.auth.admin.deleteUser(data.user.id);
-            console.log('プロフィール作成失敗のため、作成されたユーザーを削除しました:', data.user.id);
+            await serviceRoleSupabase.auth.admin.deleteUser(userId);
+            console.log('プロフィール作成失敗のため、作成されたユーザーを削除しました:', userId);
           } catch (deleteError) {
             console.error('ユーザー削除エラー（無視）:', deleteError);
           }
