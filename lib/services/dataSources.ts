@@ -217,7 +217,7 @@ export async function fetchMonitorDashboardData(userId?: string): Promise<Monito
       name: mappedProfile.name,
       email: mappedProfile.email
     });
-    
+
     return {
       profile: mappedProfile,
       surveys: (surveyRes.data ?? []).map(mapSurvey),

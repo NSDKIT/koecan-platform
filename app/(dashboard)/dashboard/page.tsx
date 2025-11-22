@@ -466,7 +466,7 @@ export default function MonitorDashboard() {
               <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-full p-4 flex items-center justify-center w-20 h-20 shadow-lg">
                 <Star className="w-10 h-10 text-white" />
               </div>
-              <div>
+                    <div>
                 <p className="text-gray-600 text-lg">獲得ポイント</p>
                 <p className="text-5xl font-bold text-orange-600">{profile?.points || 0}</p>
               </div>
@@ -527,7 +527,7 @@ export default function MonitorDashboard() {
                             </button>
                           </div>
                         </div>
-                      </div>
+            </div>
                     ))}
                   </div>
                 )}
@@ -569,10 +569,10 @@ export default function MonitorDashboard() {
                             <div className="flex items-center bg-gray-100 rounded-full px-4 py-2 text-gray-600 font-semibold text-lg">
                               <Gift className="w-5 h-5 mr-2" />
                               <span>{survey.rewardPoints}pt 獲得済み</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                </div>
+                </div>
+            </div>
+          </div>
                     ))}
                   </div>
                 )}
@@ -610,7 +610,7 @@ export default function MonitorDashboard() {
                                 const target = e.target as HTMLImageElement;
                                 target.style.display = 'none';
                               }}
-                            />
+          />
                           </div>
                         ) : (
                           <div className="aspect-video bg-gray-200 flex items-center justify-center">
@@ -626,9 +626,9 @@ export default function MonitorDashboard() {
                             {displayValue(ad.company_vision) || displayValue(ad.title) || displayValue(ad.description) || ''}
                           </p>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+              </div>
+            ))}
+          </div>
                 )}
               </div>
             )}
@@ -763,8 +763,8 @@ export default function MonitorDashboard() {
                 className="text-gray-500 hover:text-gray-700"
               >
                 <X className="w-6 h-6" />
-              </button>
-            </div>
+                </button>
+              </div>
             <LineLinkButton />
           </div>
         </div>
@@ -850,7 +850,7 @@ export default function MonitorDashboard() {
                       </tbody>
                     </table>
                   </div>
-                </div>
+          </div>
 
                 {/* その他の詳細情報も同様に表示 */}
                 {selectedAdvertisement.recruitment_info_page_url && (
@@ -871,6 +871,6 @@ export default function MonitorDashboard() {
           </div>
         </div>
       )}
-    </div>
+      </div>
   );
 }

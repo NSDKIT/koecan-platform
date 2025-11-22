@@ -34,19 +34,37 @@ export async function middleware(request: NextRequest) {
 
     const supabase = createMiddlewareClient<Database>({ req: request, res });
 
-    const {
-      data: { session },
-      error
-    } = await supabase.auth.getSession();
+    let session = null;
+    let error = null;
+    
+    try {
+      const result = await supabase.auth.getSession();
+      session = result.data?.session || null;
+      error = result.error || null;
+    } catch (err) {
+      // クッキー解析エラーなどの例外を無視
+      // クライアント側でlocalStorageにセッションを保存している場合、
+      // サーバー側のクッキーにセッションがないことが正常な状態
+      error = err as any;
+    }
 
-    // セッション取得エラーの場合はスキップ（エラーログは出さない）
+    // セッション取得エラーまたはセッションがない場合はスキップ
+    // クライアント側でlocalStorageにセッションを保存している場合、
+    // サーバー側のクッキーにセッションがないことが正常な状態
     if (error || !session) {
-      // 認証が必要なページの場合はログインページへリダイレクト
-      if (pathname.startsWith('/dashboard') || pathname.startsWith('/admin') || pathname.startsWith('/client') || pathname.startsWith('/support')) {
+      // 認証が必要なページの場合でも、クライアント側でセッション管理しているため
+      // サーバー側でリダイレクトしない（クライアント側でリダイレクトする）
+      // ただし、明確に認証が必要なAPIエンドポイントなどは除外
+      if (
+        pathname.startsWith('/api/') && 
+        !pathname.startsWith('/api/auth/')
+      ) {
+        // APIエンドポイントでセッションが必要な場合はリダイレクト
         const redirectUrl = new URL('/login', request.url);
         redirectUrl.searchParams.set('redirect', pathname);
         return NextResponse.redirect(redirectUrl);
       }
+      // ダッシュボードなどのページはクライアント側で認証チェックするため、ここではリダイレクトしない
       return res;
     }
 

@@ -201,7 +201,7 @@ export default function WelcomePage() {
               ログイン
             </Link>
           </p>
-        </div>
+          </div>
       </div>
     </main>
   );
