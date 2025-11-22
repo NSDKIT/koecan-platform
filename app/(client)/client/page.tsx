@@ -61,9 +61,10 @@ export default async function ClientPage() {
                       <td>{survey.rewardPoints} pt</td>
                       <td>{survey.questions}問</td>
                       <td>
-                        <StatusPill status={survey.status === 'open' ? 'success' : survey.status === 'closed' ? 'danger' : 'pending'}>
-                          {survey.status === 'open' ? '公開中' : survey.status === 'closed' ? '終了' : '予約'}
-                        </StatusPill>
+                        <StatusPill
+                          text={survey.status === 'open' ? '公開中' : survey.status === 'closed' ? '終了' : '予約'}
+                          variant={survey.status === 'open' ? 'success' : survey.status === 'closed' ? 'danger' : 'pending'}
+                        />
                       </td>
                       <td>{formatDate(survey.deadline)}</td>
                       <td>0件</td>

@@ -52,14 +52,16 @@ export default async function SupportPage() {
                       <td>{ticket.subject}</td>
                       <td>{ticket.channel === 'chat' ? 'チャット' : 'メール'}</td>
                       <td>
-                        <StatusPill status={ticket.priority === 'high' ? 'danger' : ticket.priority === 'medium' ? 'pending' : 'success'}>
-                          {ticket.priority === 'high' ? '高' : ticket.priority === 'medium' ? '中' : '低'}
-                        </StatusPill>
+                        <StatusPill
+                          text={ticket.priority === 'high' ? '高' : ticket.priority === 'medium' ? '中' : '低'}
+                          variant={ticket.priority === 'high' ? 'danger' : ticket.priority === 'medium' ? 'pending' : 'success'}
+                        />
                       </td>
                       <td>
-                        <StatusPill status={ticket.status === 'waiting' ? 'pending' : ticket.status === 'responding' ? 'info' : 'success'}>
-                          {ticket.status === 'waiting' ? '待機中' : ticket.status === 'responding' ? '対応中' : '解決済み'}
-                        </StatusPill>
+                        <StatusPill
+                          text={ticket.status === 'waiting' ? '待機中' : ticket.status === 'responding' ? '対応中' : '解決済み'}
+                          variant={ticket.status === 'waiting' ? 'pending' : ticket.status === 'responding' ? 'info' : 'success'}
+                        />
                       </td>
                       <td>{formatDate(ticket.createdAt)}</td>
                       <td>
