@@ -68,36 +68,7 @@ export async function middleware(request: NextRequest) {
       return res;
     }
 
-    // ユーザーのロールを取得（user_metadataから取得、なければデフォルトでmonitor）
-    const role = (session.user.user_metadata?.role || 'monitor') as 'monitor' | 'client' | 'admin' | 'support';
-
-    // ロールに応じたアクセス制御
-    if (pathname.startsWith('/dashboard')) {
-      if (role !== 'monitor') {
-        // モニター以外はロールに応じたページにリダイレクト
-        const redirectPath = role === 'admin' ? '/admin' : role === 'client' ? '/client' : role === 'support' ? '/support' : '/login';
-        return NextResponse.redirect(new URL(redirectPath, request.url));
-      }
-    } else if (pathname.startsWith('/admin')) {
-      if (role !== 'admin') {
-        // 管理者以外はロールに応じたページにリダイレクト
-        const redirectPath = role === 'monitor' ? '/dashboard' : role === 'client' ? '/client' : role === 'support' ? '/support' : '/login';
-        return NextResponse.redirect(new URL(redirectPath, request.url));
-      }
-    } else if (pathname.startsWith('/client')) {
-      if (role !== 'client') {
-        // 企業以外はロールに応じたページにリダイレクト
-        const redirectPath = role === 'monitor' ? '/dashboard' : role === 'admin' ? '/admin' : role === 'support' ? '/support' : '/login';
-        return NextResponse.redirect(new URL(redirectPath, request.url));
-      }
-    } else if (pathname.startsWith('/support')) {
-      if (role !== 'support') {
-        // サポート以外はロールに応じたページにリダイレクト
-        const redirectPath = role === 'monitor' ? '/dashboard' : role === 'admin' ? '/admin' : role === 'client' ? '/client' : '/login';
-        return NextResponse.redirect(new URL(redirectPath, request.url));
-      }
-    }
-
+    // ロールベースのアクセス制御はクライアント側で行うため、サーバー側ではスキップ
     return res;
   } catch (error) {
     // エラーが発生した場合は、ログを出力してリクエストを続行
