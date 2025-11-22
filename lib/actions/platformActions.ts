@@ -323,43 +323,95 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
       // 紹介コードを生成（なければランダム生成）
       const generatedReferralCode = payload.referralCode || `KOECAN-${randomUUID().substring(0, 8).toUpperCase()}`;
       
-      // プロフィール作成にはService Roleを使用（RLSポリシーをバイパスするため）
-      const serviceRoleSupabase = getSupabaseServiceRole();
-      const { error: profileError } = await serviceRoleSupabase
-        .from('monitor_profiles')
-        .insert({
-          user_id: data.user.id,
-          name: payload.name,
-          email: payload.email,
-          occupation: payload.occupation,
-          age: payload.age || null,
-          gender: payload.gender || null,
-          location: payload.location || null,
-          referral_code: generatedReferralCode,
-          points: 0,
-          referral_count: 0,
-          referral_points: 0,
-          is_line_linked: false,
-          push_opt_in: false,
-          tags: []
-        } as any); // 型エラーを回避するための型アサーション
+      // プロフィール作成：Service Roleが利用可能な場合はそれを使用、そうでなければ通常のクライアントを使用
+      let profileInsertResult;
+      let serviceRoleSupabase: ReturnType<typeof getSupabaseServiceRole> | null = null;
+      
+      if (isSupabaseConfigured()) {
+        // Service Roleが利用可能な場合はそれを使用（RLSポリシーをバイパス）
+        try {
+          serviceRoleSupabase = getSupabaseServiceRole();
+          profileInsertResult = await serviceRoleSupabase
+            .from('monitor_profiles')
+            .insert({
+              user_id: data.user.id,
+              name: payload.name,
+              email: payload.email,
+              occupation: payload.occupation,
+              age: payload.age || null,
+              gender: payload.gender || null,
+              location: payload.location || null,
+              referral_code: generatedReferralCode,
+              points: 0,
+              referral_count: 0,
+              referral_points: 0,
+              is_line_linked: false,
+              push_opt_in: false,
+              tags: []
+            } as any);
+        } catch (serviceRoleError) {
+          console.warn('Service Roleを使用したプロフィール作成に失敗、通常のクライアントで再試行:', serviceRoleError);
+          serviceRoleSupabase = null;
+          // 通常のクライアントで再試行
+          profileInsertResult = await supabase
+            .from('monitor_profiles')
+            .insert({
+              user_id: data.user.id,
+              name: payload.name,
+              email: payload.email,
+              occupation: payload.occupation,
+              age: payload.age || null,
+              gender: payload.gender || null,
+              location: payload.location || null,
+              referral_code: generatedReferralCode,
+              points: 0,
+              referral_count: 0,
+              referral_points: 0,
+              is_line_linked: false,
+              push_opt_in: false,
+              tags: []
+            } as any);
+        }
+      } else {
+        // Service Roleが利用できない場合は通常のクライアントを使用
+        profileInsertResult = await supabase
+          .from('monitor_profiles')
+          .insert({
+            user_id: data.user.id,
+            name: payload.name,
+            email: payload.email,
+            occupation: payload.occupation,
+            age: payload.age || null,
+            gender: payload.gender || null,
+            location: payload.location || null,
+            referral_code: generatedReferralCode,
+            points: 0,
+            referral_count: 0,
+            referral_points: 0,
+            is_line_linked: false,
+            push_opt_in: false,
+            tags: []
+          } as any);
+      }
 
-      if (profileError) {
-        console.error('プロフィール作成エラー:', profileError);
+      if (profileInsertResult.error) {
+        console.error('プロフィール作成エラー:', profileInsertResult.error);
         
         // プロフィール作成に失敗した場合、作成されたユーザーを削除して登録を失敗とする
-        try {
-          await serviceRoleSupabase.auth.admin.deleteUser(data.user.id);
-          console.log('プロフィール作成失敗のため、作成されたユーザーを削除しました:', data.user.id);
-        } catch (deleteError) {
-          console.error('ユーザー削除エラー（無視）:', deleteError);
-          // ユーザー削除に失敗しても、エラーメッセージを返す
+        if (serviceRoleSupabase) {
+          try {
+            await serviceRoleSupabase.auth.admin.deleteUser(data.user.id);
+            console.log('プロフィール作成失敗のため、作成されたユーザーを削除しました:', data.user.id);
+          } catch (deleteError) {
+            console.error('ユーザー削除エラー（無視）:', deleteError);
+            // ユーザー削除に失敗しても、エラーメッセージを返す
+          }
         }
         
         // エラーメッセージを返す
         return { 
           success: false, 
-          message: `登録に失敗しました。プロフィールの保存に失敗しました: ${profileError.message || '不明なエラー'}` 
+          message: `登録に失敗しました。プロフィールの保存に失敗しました: ${profileInsertResult.error.message || '不明なエラー'}` 
         };
       }
 
