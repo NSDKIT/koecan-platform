@@ -326,11 +326,14 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
       // プロフィール作成：Service Roleが利用可能な場合はそれを使用、そうでなければ通常のクライアントを使用
       let profileInsertResult;
       let serviceRoleSupabase: ReturnType<typeof getSupabaseServiceRole> | null = null;
+      let useServiceRole = false;
       
-      if (isSupabaseConfigured()) {
-        // Service Roleが利用可能な場合はそれを使用（RLSポリシーをバイパス）
+      // Service Roleが利用可能かどうかを確認
+      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
         try {
           serviceRoleSupabase = getSupabaseServiceRole();
+          useServiceRole = true;
+          // Service Roleを使用してプロフィールを作成（RLSポリシーをバイパス）
           profileInsertResult = await serviceRoleSupabase
             .from('monitor_profiles')
             .insert({
@@ -351,29 +354,14 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
             } as any);
         } catch (serviceRoleError) {
           console.warn('Service Roleを使用したプロフィール作成に失敗、通常のクライアントで再試行:', serviceRoleError);
+          useServiceRole = false;
           serviceRoleSupabase = null;
-          // 通常のクライアントで再試行
-          profileInsertResult = await supabase
-            .from('monitor_profiles')
-            .insert({
-              user_id: data.user.id,
-              name: payload.name,
-              email: payload.email,
-              occupation: payload.occupation,
-              age: payload.age || null,
-              gender: payload.gender || null,
-              location: payload.location || null,
-              referral_code: generatedReferralCode,
-              points: 0,
-              referral_count: 0,
-              referral_points: 0,
-              is_line_linked: false,
-              push_opt_in: false,
-              tags: []
-            } as any);
         }
-      } else {
-        // Service Roleが利用できない場合は通常のクライアントを使用
+      }
+      
+      // Service Roleが利用できない場合、またはService Roleでの作成に失敗した場合は通常のクライアントを使用
+      if (!useServiceRole || profileInsertResult?.error) {
+        // 通常のクライアントで再試行（登録直後はセッションが確立されている可能性がある）
         profileInsertResult = await supabase
           .from('monitor_profiles')
           .insert({
@@ -408,10 +396,15 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
           }
         }
         
-        // エラーメッセージを返す
+        // エラーメッセージを返す（環境変数の設定が必要な場合はそれを示す）
+        let errorMessage = profileInsertResult.error.message || '不明なエラー';
+        if (errorMessage.includes('row-level security') || errorMessage.includes('RLS')) {
+          errorMessage += '。プロフィール作成にはSUPABASE_SERVICE_ROLE_KEYの設定が必要です。';
+        }
+        
         return { 
           success: false, 
-          message: `登録に失敗しました。プロフィールの保存に失敗しました: ${profileInsertResult.error.message || '不明なエラー'}` 
+          message: `登録に失敗しました。プロフィールの保存に失敗しました: ${errorMessage}` 
         };
       }
 
