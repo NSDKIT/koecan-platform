@@ -71,31 +71,36 @@ export default function LoginPage() {
           return;
         }
         
-        // サーバー側でもログイン処理を実行（ロール取得とリダイレクトURL決定のため）
-        // ただし、クライアント側で既にログインしているので、これはロール取得のみ
-        const result = await loginAction(formData);
-        
-        // リダイレクトURLを取得（サーバー側の結果から、またはデフォルト）
-        // ロールはloginData.session.user.user_metadataから取得することも可能
+        // ロール情報をクライアント側で取得（サーバー側のログイン処理はスキップ）
+        // これにより、サーバー側のクッキー解析エラーを回避
         const role = loginData.session.user.user_metadata?.role || 'monitor';
-        let redirectUrl = result?.redirectUrl;
-        
-        if (!redirectUrl) {
-          // サーバー側の結果がない場合、ロールからリダイレクトURLを決定
-          const roleUrlMap: Record<string, string> = {
-            monitor: '/dashboard',
-            client: '/client',
-            admin: '/admin',
-            support: '/support'
-          };
-          redirectUrl = roleUrlMap[role] || '/dashboard';
-        }
+        const roleUrlMap: Record<string, string> = {
+          monitor: '/dashboard',
+          client: '/client',
+          admin: '/admin',
+          support: '/support'
+        };
+        const redirectUrl = roleUrlMap[role] || '/dashboard';
         
         console.log('ログイン成功。リダイレクト先:', redirectUrl, { role });
         
         // セッションが確実に保存されていることを確認してからリダイレクト
         // 少し待ってからリダイレクト（セッションの保存を確実にする）
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // 最終確認: セッションがlocalStorageに保存されていることを確認
+        const finalSessionCheck = await supabase.auth.getSession();
+        console.log('リダイレクト前の最終セッション確認:', {
+          hasSession: !!finalSessionCheck.data?.session,
+          userId: finalSessionCheck.data?.session?.user?.id || 'なし',
+          email: finalSessionCheck.data?.session?.user?.email || 'なし'
+        });
+        
+        if (!finalSessionCheck.data?.session) {
+          console.error('リダイレクト前にセッションが失われました');
+          setError('ログインに失敗しました。セッションを保存できませんでした。');
+          return;
+        }
         
         // クライアント側でセッションが確立されているので、リダイレクト
         window.location.href = redirectUrl;
