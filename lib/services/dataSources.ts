@@ -248,10 +248,13 @@ export async function fetchSupportDashboardData(): Promise<SupportDashboardData>
 }
 
 export async function fetchSurveyDetail(surveyId: string, userId?: string): Promise<SurveyDetail | null> {
+  // Supabase未設定の場合はモックデータを返す
   if (!isSupabaseConfigured()) {
-    // モックデータを返す
     const mockSurvey = mockSurveys.find((s) => s.id === surveyId);
-    if (!mockSurvey) return null;
+    if (!mockSurvey) {
+      console.warn(`アンケートが見つかりません: ${surveyId}`);
+      return null;
+    }
     
     return {
       ...mockSurvey,

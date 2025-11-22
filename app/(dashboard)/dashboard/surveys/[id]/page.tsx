@@ -15,28 +15,36 @@ interface SurveyDetailPageProps {
 }
 
 export default async function SurveyDetailPage({ params }: SurveyDetailPageProps) {
-  const { id } = await params;
-  const supabase = clientForServerComponent();
-  const { data: { user } } = await supabase.auth.getUser();
-  const userId = user?.id || process.env.DEMO_MONITOR_ID;
+  try {
+    const { id } = await params;
+    
+    let userId: string | undefined;
+    try {
+      const supabase = clientForServerComponent();
+      const { data: { user } } = await supabase.auth.getUser();
+      userId = user?.id || process.env.DEMO_MONITOR_ID;
+    } catch (authError) {
+      console.warn('認証エラー（フォールバック）:', authError);
+      userId = process.env.DEMO_MONITOR_ID;
+    }
 
-  const survey = await fetchSurveyDetail(id, userId);
+    const survey = await fetchSurveyDetail(id, userId);
 
-  if (!survey) {
-    notFound();
-  }
+    if (!survey) {
+      notFound();
+    }
 
-  // 回答済みの場合は一覧にリダイレクト
-  if (survey.hasAnswered) {
-    redirect('/dashboard?message=already_answered');
-  }
+    // 回答済みの場合は一覧にリダイレクト
+    if (survey.hasAnswered) {
+      redirect('/dashboard?message=already_answered');
+    }
 
-  // 期限切れの場合は一覧にリダイレクト
-  const now = new Date();
-  const deadline = new Date(survey.deadline);
-  if (deadline < now) {
-    redirect('/dashboard?message=deadline_passed');
-  }
+    // 期限切れの場合は一覧にリダイレクト
+    const now = new Date();
+    const deadline = new Date(survey.deadline);
+    if (deadline < now) {
+      redirect('/dashboard?message=deadline_passed');
+    }
 
   return (
     <main style={{ padding: '2rem 0' }}>
@@ -73,6 +81,11 @@ export default async function SurveyDetailPage({ params }: SurveyDetailPageProps
         </Section>
       </div>
     </main>
-  );
+    );
+  } catch (error) {
+    console.error('アンケート詳細ページエラー:', error);
+    // エラー時はダッシュボードにリダイレクト
+    redirect('/dashboard?error=survey_load_failed');
+  }
 }
 
