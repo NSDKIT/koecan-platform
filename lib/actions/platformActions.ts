@@ -621,12 +621,57 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
         };
       }
 
-      // 3. 登録成功時はダッシュボードにリダイレクト
-      return { 
-        success: true, 
-        message: '登録が完了しました。',
-        redirectUrl: '/dashboard'
-      };
+      // 3. 登録成功後、クライアント側で認証セッションを確立するためにログイン
+      // Service Roleでユーザーを作成した場合、通常のクライアント側の認証セッションは自動的に作成されないため、
+      // 明示的にログインする必要がある
+      console.log('登録成功。ユーザーをログインさせます:', {
+        email: payload.email,
+        userId
+      });
+      
+      try {
+        // 通常のクライアントでログインしてセッションを確立
+        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+          email: payload.email,
+          password: payload.password
+        });
+        
+        if (loginError || !loginData.user) {
+          console.error('登録後の自動ログインに失敗:', {
+            error: loginError?.message,
+            hasUser: !!loginData?.user
+          });
+          
+          // ログインに失敗した場合は、ログインページにリダイレクト
+          // ユーザーは手動でログインする必要がある
+          return {
+            success: true,
+            message: '登録が完了しました。ログインページからログインしてください。',
+            redirectUrl: '/login?registered=true'
+          };
+        }
+        
+        console.log('登録後の自動ログイン成功:', {
+          userId: loginData.user.id,
+          email: loginData.user.email
+        });
+        
+        // ログイン成功時はダッシュボードにリダイレクト
+        return { 
+          success: true, 
+          message: '登録が完了しました。',
+          redirectUrl: '/dashboard'
+        };
+      } catch (loginException) {
+        console.error('登録後の自動ログインで例外が発生:', loginException);
+        
+        // ログインに失敗した場合は、ログインページにリダイレクト
+        return {
+          success: true,
+          message: '登録が完了しました。ログインページからログインしてください。',
+          redirectUrl: '/login?registered=true'
+        };
+      }
     } catch (supabaseError) {
       console.error('Supabase呼び出しエラー:', supabaseError);
       if (supabaseError instanceof Error) {
