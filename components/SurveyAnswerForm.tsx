@@ -20,9 +20,9 @@ export function SurveyAnswerForm({ survey, userId }: SurveyAnswerFormProps) {
     setAnswers((prev) => ({
       ...prev,
       [questionId]: {
-        questionId,
         ...prev[questionId],
-        ...answer
+        ...answer,
+        questionId // 最後にquestionIdを設定して確実に正しい値にする
       }
     }));
     setError(null);
