@@ -344,9 +344,22 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
 
       if (profileError) {
         console.error('プロフィール作成エラー:', profileError);
-        // プロフィール作成に失敗しても、ユーザーは作成されているため警告のみ
-        console.warn('ユーザーは作成されましたが、プロフィールの作成に失敗しました。', profileError.message);
-        // エラーを無視して続行（後でプロフィールを更新できる）
+        
+        // プロフィール作成に失敗した場合、作成されたユーザーを削除して登録を失敗とする
+        try {
+          const serviceRoleSupabase = getSupabaseServiceRole();
+          await serviceRoleSupabase.auth.admin.deleteUser(data.user.id);
+          console.log('プロフィール作成失敗のため、作成されたユーザーを削除しました:', data.user.id);
+        } catch (deleteError) {
+          console.error('ユーザー削除エラー（無視）:', deleteError);
+          // ユーザー削除に失敗しても、エラーメッセージを返す
+        }
+        
+        // エラーメッセージを返す
+        return { 
+          success: false, 
+          message: `登録に失敗しました。プロフィールの保存に失敗しました: ${profileError.message || '不明なエラー'}` 
+        };
       }
 
       // 3. 登録成功時はダッシュボードにリダイレクト
