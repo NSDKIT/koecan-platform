@@ -87,11 +87,34 @@ export default function MonitorDashboard() {
   const [showLineLinkModal, setShowLineLinkModal] = useState(false);
 
   useEffect(() => {
+    console.log('useEffect [user, authLoading]:', {
+      hasUser: !!user,
+      userId: user?.id,
+      authLoading,
+      dashboardDataLoading
+    });
+
     if (user && !authLoading) {
       loadAllDashboardData();
+    } else if (!authLoading && !user) {
+      // 認証が完了したがユーザーが存在しない場合はローディングを解除
+      console.log('認証完了、ユーザーなし');
+      setDashboardDataLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
+
+  // タイムアウト処理：10秒後に強制的にローディングを解除
+  useEffect(() => {
+    if (!dashboardDataLoading) return;
+    
+    const timeout = setTimeout(() => {
+      console.warn('ダッシュボードデータ読み込みがタイムアウトしました（10秒）。ローディングを強制的に解除します');
+      setDashboardDataLoading(false);
+    }, 10000);
+
+    return () => clearTimeout(timeout);
+  }, [dashboardDataLoading]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -112,17 +135,21 @@ export default function MonitorDashboard() {
 
   const loadAllDashboardData = async () => {
     if (!user?.id) {
-      setDashboardDataLoading(true);
+      console.log('loadAllDashboardData: user.idが存在しません');
+      setDashboardDataLoading(false);
       return;
     }
 
+    console.log('loadAllDashboardData: 開始', { userId: user.id });
     setDashboardDataLoading(true);
     try {
-      await Promise.all([
+      // 各データ取得を個別に実行し、エラーがあっても続行
+      await Promise.allSettled([
         fetchProfile(),
         fetchSurveysAndResponses(),
         fetchAdvertisements()
       ]);
+      console.log('loadAllDashboardData: 完了');
       setDashboardDataLoading(false);
     } catch (err) {
       console.error("ダッシュボードデータの読み込みに失敗:", err);
@@ -131,7 +158,10 @@ export default function MonitorDashboard() {
   };
 
   const fetchProfile = async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      console.log('fetchProfile: user.idが存在しません');
+      return;
+    }
     
     try {
       const supabase = getBrowserSupabase();
@@ -141,28 +171,53 @@ export default function MonitorDashboard() {
         .eq('user_id', user.id)
         .single();
 
-      if (profileError) throw profileError;
+      // プロフィールが見つからない場合（PGRST116）でもエラーをthrowしない
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('プロフィール取得エラー:', profileError);
+        throw profileError;
+      }
 
-      const combinedProfile: MonitorProfile = {
-        ...profileData,
-        id: profileData.user_id || profileData.id,
-        name: profileData.name || user.email?.split('@')[0] || 'ユーザー',
-        email: profileData.email || user.email || '',
-        occupation: profileData.occupation || '',
-        age: profileData.age || 0,
-        points: profileData.points || 0,
-        referralCode: profileData.referral_code || '',
-        referralCount: profileData.referral_count || 0,
-        referralPoints: profileData.referral_points || 0,
-        isLineLinked: profileData.is_line_linked || false,
-        pushOptIn: profileData.push_opt_in || false,
-        tags: profileData.tags || [],
-        updatedAt: profileData.updated_at || new Date().toISOString()
-      };
-
-      setProfile(combinedProfile);
+      if (profileData) {
+        const combinedProfile: MonitorProfile = {
+          ...profileData,
+          id: profileData.user_id || profileData.id,
+          name: profileData.name || user.email?.split('@')[0] || 'ユーザー',
+          email: profileData.email || user.email || '',
+          occupation: profileData.occupation || '',
+          age: profileData.age || 0,
+          points: profileData.points || 0,
+          referralCode: profileData.referral_code || '',
+          referralCount: profileData.referral_count || 0,
+          referralPoints: profileData.referral_points || 0,
+          isLineLinked: profileData.is_line_linked || false,
+          pushOptIn: profileData.push_opt_in || false,
+          tags: profileData.tags || [],
+          updatedAt: profileData.updated_at || new Date().toISOString()
+        };
+        setProfile(combinedProfile);
+        console.log('プロフィール取得成功:', combinedProfile.name);
+      } else {
+        // プロフィールが見つからない場合は最小限のプロフィールを作成
+        console.log('プロフィールが見つかりません。最小限のプロフィールを作成します');
+        setProfile({ 
+          id: user.id,
+          name: user.email?.split('@')[0] || 'ユーザー',
+          email: user.email || '',
+          occupation: '',
+          age: 0,
+          points: 0,
+          referralCode: '',
+          referralCount: 0,
+          referralPoints: 0,
+          isLineLinked: false,
+          pushOptIn: false,
+          tags: [],
+          updatedAt: new Date().toISOString()
+        } as MonitorProfile);
+      }
     } catch (error) {
       console.error('プロフィール取得エラー:', error);
+      // エラーが発生しても最小限のプロフィールを設定して続行
       setProfile({ 
         id: user.id,
         name: user.email?.split('@')[0] || 'ユーザー',
@@ -182,7 +237,10 @@ export default function MonitorDashboard() {
   };
 
   const fetchSurveysAndResponses = async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      console.log('fetchSurveysAndResponses: user.idが存在しません');
+      return;
+    }
 
     try {
       const supabase = getBrowserSupabase();
@@ -194,7 +252,10 @@ export default function MonitorDashboard() {
 
       if (surveysError) {
         console.error('アンケート取得エラー:', surveysError);
-        throw surveysError;
+        // エラーがあっても空配列を設定して続行
+        setAvailableSurveys([]);
+        setAnsweredSurveys([]);
+        return;
       }
 
       const { data: userResponses, error: responsesError } = await (supabase as any)
@@ -204,7 +265,7 @@ export default function MonitorDashboard() {
 
       if (responsesError && responsesError.code !== 'PGRST116') {
         console.error('回答履歴取得エラー:', responsesError);
-        throw responsesError;
+        // エラーがあっても続行
       }
 
       const answeredSurveyIds = new Set(userResponses?.map((res: {survey_id: string}) => res.survey_id) || []);
@@ -212,7 +273,7 @@ export default function MonitorDashboard() {
       const newAvailableSurveys: Survey[] = [];
       const newAnsweredSurveys: Survey[] = [];
 
-      allActiveSurveys?.forEach((survey: any) => {
+      (allActiveSurveys || []).forEach((survey: any) => {
         const mappedSurvey: Survey & { description?: string } = {
           id: survey.id,
           title: survey.title,
@@ -236,8 +297,12 @@ export default function MonitorDashboard() {
 
       setAvailableSurveys(newAvailableSurveys);
       setAnsweredSurveys(newAnsweredSurveys);
+      console.log('アンケート取得成功:', { available: newAvailableSurveys.length, answered: newAnsweredSurveys.length });
     } catch (error) {
       console.error('アンケートと回答の取得エラー:', error);
+      // エラーがあっても空配列を設定して続行
+      setAvailableSurveys([]);
+      setAnsweredSurveys([]);
     }
   };
 
@@ -266,21 +331,38 @@ export default function MonitorDashboard() {
     router.push(`/dashboard/surveys/${survey.id}`);
   };
 
-  if (authLoading || dashboardDataLoading) {
+  // デバッグログ
+  useEffect(() => {
+    console.log('ダッシュボード状態:', {
+      authLoading,
+      dashboardDataLoading,
+      hasUser: !!user,
+      userId: user?.id,
+      hasProfile: !!profile
+    });
+  }, [authLoading, dashboardDataLoading, user, profile]);
+
+  // 認証ローディング中
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">読み込み中...</p>
+          <p className="text-gray-600">認証情報を確認中...</p>
         </div>
       </div>
     );
   }
 
+  // 認証が完了したがユーザーが存在しない場合
   if (!user) {
+    console.log('ユーザーが存在しないため、ログインページにリダイレクト');
     router.push('/login');
     return null;
   }
+
+  // データ読み込み中でプロフィールもまだ取得できていない場合のみローディング表示
+  // ただし、タイムアウト（10秒）後は強制的にダッシュボードを表示
 
   return (
     <div className="min-h-screen bg-white relative overflow-hidden">
@@ -653,9 +735,9 @@ export default function MonitorDashboard() {
         />
       )}
 
-      {showPointExchangeModal && profile && (
+      {showPointExchangeModal && (
         <PointExchangeModal
-          currentPoints={profile.points}
+          currentPoints={profile?.points || 0}
           onClose={() => setShowPointExchangeModal(false)}
           onExchangeSuccess={fetchProfile}
         />
