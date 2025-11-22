@@ -250,24 +250,60 @@ function redirectToRoleDashboard(role: 'monitor' | 'client' | 'admin' | 'support
   redirect(url);
 }
 
-export async function registerAction(formData: FormData) {
-  const payload = registerSchema.parse({
-    email: formData.get('email'),
-    password: formData.get('password'),
-    referralCode: formData.get('referralCode') ?? undefined
-  });
-  const supabase = clientForServerAction();
-  const { error } = await supabase.auth.signUp({
-    email: payload.email,
-    password: payload.password,
-    options: {
-      data: { referral_code: payload.referralCode }
+export async function registerAction(formData: FormData): Promise<{ success: boolean; message: string }> {
+  try {
+    const email = formData.get('email')?.toString() || '';
+    const password = formData.get('password')?.toString() || '';
+    const referralCode = formData.get('referralCode')?.toString() || undefined;
+
+    if (!email || !password) {
+      return { success: false, message: 'メールアドレスとパスワードを入力してください。' };
     }
-  });
-  if (error) {
-    return { success: false, message: error.message };
+
+    // Supabase未設定の場合
+    if (!isSupabaseConfigured()) {
+      console.warn('Supabase未設定: 登録処理をスキップ');
+      return { success: false, message: '現在、新規登録機能は利用できません。Supabaseの設定を確認してください。' };
+    }
+
+    const payload = registerSchema.parse({
+      email,
+      password,
+      referralCode
+    });
+
+    const supabase = clientForServerAction();
+    const { data, error } = await supabase.auth.signUp({
+      email: payload.email,
+      password: payload.password,
+      options: {
+        data: { 
+          referral_code: payload.referralCode,
+          role: 'monitor' // デフォルトでモニターロールを設定
+        }
+      }
+    });
+
+    if (error) {
+      console.error('登録エラー:', error);
+      return { success: false, message: error.message || '登録に失敗しました。' };
+    }
+
+    if (!data.user) {
+      return { success: false, message: 'ユーザーの作成に失敗しました。' };
+    }
+
+    return { success: true, message: '仮登録完了。メールをご確認ください。' };
+  } catch (error) {
+    console.error('登録処理エラー:', error);
+    if (error instanceof z.ZodError) {
+      return { success: false, message: `入力値が不正です: ${error.errors.map(e => e.message).join(', ')}` };
+    }
+    if (error instanceof Error) {
+      return { success: false, message: error.message };
+    }
+    return { success: false, message: '登録処理中にエラーが発生しました。' };
   }
-  return { success: true, message: '仮登録完了。メールをご確認ください。' };
 }
 
 export async function createAnnouncement(data: unknown) {
