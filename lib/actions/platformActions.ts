@@ -323,8 +323,25 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
       // 紹介コードを生成（なければランダム生成）
       const generatedReferralCode = payload.referralCode || `KOECAN-${randomUUID().substring(0, 8).toUpperCase()}`;
       
+      const profileData = {
+        user_id: data.user.id,
+        name: payload.name,
+        email: payload.email,
+        occupation: payload.occupation,
+        age: payload.age || null,
+        gender: payload.gender || null,
+        location: payload.location || null,
+        referral_code: generatedReferralCode,
+        points: 0,
+        referral_count: 0,
+        referral_points: 0,
+        is_line_linked: false,
+        push_opt_in: false,
+        tags: []
+      };
+      
       // プロフィール作成：Service Roleが利用可能な場合はそれを使用、そうでなければ通常のクライアントを使用
-      let profileInsertResult;
+      let profileInsertResult: { error: any } | null = null;
       let serviceRoleSupabase: ReturnType<typeof getSupabaseServiceRole> | null = null;
       let useServiceRole = false;
       
@@ -336,50 +353,21 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
           // Service Roleを使用してプロフィールを作成（RLSポリシーをバイパス）
           profileInsertResult = await serviceRoleSupabase
             .from('monitor_profiles')
-            .insert({
-              user_id: data.user.id,
-              name: payload.name,
-              email: payload.email,
-              occupation: payload.occupation,
-              age: payload.age || null,
-              gender: payload.gender || null,
-              location: payload.location || null,
-              referral_code: generatedReferralCode,
-              points: 0,
-              referral_count: 0,
-              referral_points: 0,
-              is_line_linked: false,
-              push_opt_in: false,
-              tags: []
-            } as any);
+            .insert(profileData as any);
         } catch (serviceRoleError) {
           console.warn('Service Roleを使用したプロフィール作成に失敗、通常のクライアントで再試行:', serviceRoleError);
           useServiceRole = false;
           serviceRoleSupabase = null;
+          profileInsertResult = null;
         }
       }
       
       // Service Roleが利用できない場合、またはService Roleでの作成に失敗した場合は通常のクライアントを使用
-      if (!useServiceRole || profileInsertResult?.error) {
+      if (!useServiceRole || !profileInsertResult || profileInsertResult.error) {
         // 通常のクライアントで再試行（登録直後はセッションが確立されている可能性がある）
         profileInsertResult = await supabase
           .from('monitor_profiles')
-          .insert({
-            user_id: data.user.id,
-            name: payload.name,
-            email: payload.email,
-            occupation: payload.occupation,
-            age: payload.age || null,
-            gender: payload.gender || null,
-            location: payload.location || null,
-            referral_code: generatedReferralCode,
-            points: 0,
-            referral_count: 0,
-            referral_points: 0,
-            is_line_linked: false,
-            push_opt_in: false,
-            tags: []
-          } as any);
+          .insert(profileData as any);
       }
 
       if (profileInsertResult.error) {
