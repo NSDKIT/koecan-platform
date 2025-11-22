@@ -148,7 +148,7 @@ export interface SurveyQuestion {
   options: SurveyQuestionOption[];
 }
 
-export interface SurveyDetail extends Survey {
+export interface SurveyDetail extends Omit<Survey, 'questions'> {
   description?: string;
   questions: SurveyQuestion[];
   hasAnswered: boolean;
