@@ -8,6 +8,7 @@ import { StatusPill } from '@/components/StatusPill';
 import { SurveyResponseViewer } from '@/components/SurveyResponseViewer';
 import { fetchSurveyDetail, fetchSurveyResponses } from '@/lib/services/dataSources';
 import { clientForServerComponent } from '@/lib/services/supabaseAuth';
+import type { SurveyDetail } from '@/lib/types';
 
 const formatDate = (value: string) => format(new Date(value), 'yyyy年M月d日 HH:mm', { locale: ja });
 

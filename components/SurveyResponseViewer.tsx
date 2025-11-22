@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import type { SurveyDetail, SurveyResponseData } from '@/lib/services/dataSources';
+import type { SurveyDetail } from '@/lib/types';
+import type { SurveyResponseData } from '@/lib/services/dataSources';
 interface SurveyResponseViewerProps {
   survey: SurveyDetail;
   responses: SurveyResponseData;
