@@ -260,10 +260,13 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
       return { success: false, message: 'メールアドレスとパスワードを入力してください。' };
     }
 
-    // Supabase未設定の場合
-    if (!isSupabaseConfigured()) {
-      console.warn('Supabase未設定: 登録処理をスキップ');
-      return { success: false, message: '現在、新規登録機能は利用できません。Supabaseの設定を確認してください。' };
+    // Supabaseの基本的な環境変数をチェック（新規登録にはANON_KEYだけで十分）
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      console.warn('Supabase環境変数が設定されていません。登録処理をスキップ');
+      return { 
+        success: false, 
+        message: '現在、新規登録機能は利用できません。Supabaseの設定（NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY）を確認してください。' 
+      };
     }
 
     const payload = registerSchema.parse({
@@ -273,27 +276,40 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
     });
 
     const supabase = clientForServerAction();
-    const { data, error } = await supabase.auth.signUp({
-      email: payload.email,
-      password: payload.password,
-      options: {
-        data: { 
-          referral_code: payload.referralCode,
-          role: 'monitor' // デフォルトでモニターロールを設定
+    
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: payload.email,
+        password: payload.password,
+        options: {
+          data: { 
+            referral_code: payload.referralCode,
+            role: 'monitor' // デフォルトでモニターロールを設定
+          }
         }
+      });
+
+      if (error) {
+        console.error('登録エラー:', error);
+        // ユーザーが既に存在する場合など、より詳細なエラーメッセージを返す
+        if (error.message.includes('already registered') || error.message.includes('already exists')) {
+          return { success: false, message: 'このメールアドレスは既に登録されています。ログインページからログインしてください。' };
+        }
+        return { success: false, message: error.message || '登録に失敗しました。' };
       }
-    });
 
-    if (error) {
-      console.error('登録エラー:', error);
-      return { success: false, message: error.message || '登録に失敗しました。' };
+      if (!data.user) {
+        return { success: false, message: 'ユーザーの作成に失敗しました。' };
+      }
+
+      return { success: true, message: '仮登録完了。メールをご確認ください。' };
+    } catch (supabaseError) {
+      console.error('Supabase呼び出しエラー:', supabaseError);
+      if (supabaseError instanceof Error) {
+        return { success: false, message: `登録処理中にエラーが発生しました: ${supabaseError.message}` };
+      }
+      return { success: false, message: '登録処理中に予期せぬエラーが発生しました。' };
     }
-
-    if (!data.user) {
-      return { success: false, message: 'ユーザーの作成に失敗しました。' };
-    }
-
-    return { success: true, message: '仮登録完了。メールをご確認ください。' };
   } catch (error) {
     console.error('登録処理エラー:', error);
     if (error instanceof z.ZodError) {
