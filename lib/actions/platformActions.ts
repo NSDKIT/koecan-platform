@@ -340,34 +340,48 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
         tags: []
       };
       
-      // プロフィール作成：Service Roleが利用可能な場合はそれを使用、そうでなければ通常のクライアントを使用
+      // プロフィール作成にはService Roleを使用（RLSポリシーをバイパスするため必須）
       let profileInsertResult: { error: any } | null = null;
       let serviceRoleSupabase: ReturnType<typeof getSupabaseServiceRole> | null = null;
-      let useServiceRole = false;
       
-      // Service Roleが利用可能かどうかを確認
-      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      // Service Roleが設定されているか確認
+      if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        // Service Roleが設定されていない場合、ユーザーを削除してエラーを返す
         try {
-          serviceRoleSupabase = getSupabaseServiceRole();
-          useServiceRole = true;
-          // Service Roleを使用してプロフィールを作成（RLSポリシーをバイパス）
-          profileInsertResult = await serviceRoleSupabase
-            .from('monitor_profiles')
-            .insert(profileData as any);
-        } catch (serviceRoleError) {
-          console.warn('Service Roleを使用したプロフィール作成に失敗、通常のクライアントで再試行:', serviceRoleError);
-          useServiceRole = false;
-          serviceRoleSupabase = null;
-          profileInsertResult = null;
+          // Service Roleなしでユーザーを削除することはできないため、エラーメッセージのみ返す
+          console.error('SUPABASE_SERVICE_ROLE_KEYが設定されていません。プロフィール作成ができません。');
+        } catch (deleteError) {
+          console.error('ユーザー削除エラー（無視）:', deleteError);
         }
+        
+        return { 
+          success: false, 
+          message: '登録に失敗しました。プロフィールの保存に失敗しました。SUPABASE_SERVICE_ROLE_KEYの設定が必要です。Supabase Dashboardの「Settings」→「API」からService Role Keyを取得して、環境変数に設定してください。' 
+        };
       }
       
-      // Service Roleが利用できない場合、またはService Roleでの作成に失敗した場合は通常のクライアントを使用
-      if (!useServiceRole || !profileInsertResult || profileInsertResult.error) {
-        // 通常のクライアントで再試行（登録直後はセッションが確立されている可能性がある）
-        profileInsertResult = await supabase
+      try {
+        // Service Roleを使用してプロフィールを作成（RLSポリシーをバイパス）
+        serviceRoleSupabase = getSupabaseServiceRole();
+        profileInsertResult = await serviceRoleSupabase
           .from('monitor_profiles')
           .insert(profileData as any);
+      } catch (serviceRoleError) {
+        console.error('Service Roleを使用したプロフィール作成エラー:', serviceRoleError);
+        
+        // Service Roleでの作成に失敗した場合、ユーザーを削除してエラーを返す
+        try {
+          await serviceRoleSupabase!.auth.admin.deleteUser(data.user.id);
+          console.log('プロフィール作成失敗のため、作成されたユーザーを削除しました:', data.user.id);
+        } catch (deleteError) {
+          console.error('ユーザー削除エラー（無視）:', deleteError);
+        }
+        
+        const errorMsg = serviceRoleError instanceof Error ? serviceRoleError.message : String(serviceRoleError);
+        return { 
+          success: false, 
+          message: `登録に失敗しました。プロフィールの保存に失敗しました: ${errorMsg}` 
+        };
       }
 
       if (profileInsertResult.error) {
@@ -380,14 +394,13 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
             console.log('プロフィール作成失敗のため、作成されたユーザーを削除しました:', data.user.id);
           } catch (deleteError) {
             console.error('ユーザー削除エラー（無視）:', deleteError);
-            // ユーザー削除に失敗しても、エラーメッセージを返す
           }
         }
         
-        // エラーメッセージを返す（環境変数の設定が必要な場合はそれを示す）
+        // エラーメッセージを返す
         let errorMessage = profileInsertResult.error.message || '不明なエラー';
         if (errorMessage.includes('row-level security') || errorMessage.includes('RLS')) {
-          errorMessage += '。プロフィール作成にはSUPABASE_SERVICE_ROLE_KEYの設定が必要です。';
+          errorMessage += '。SUPABASE_SERVICE_ROLE_KEYの設定を確認してください。';
         }
         
         return { 
