@@ -20,9 +20,44 @@ export function useAuth(): UseAuthReturn {
     const supabase = getBrowserSupabase();
     let mounted = true;
     
+    // localStorageから直接セッションを確認（デバッグ用）
+    const checkLocalStorage = () => {
+      try {
+        const keys = Object.keys(localStorage);
+        const supabaseKeys = keys.filter(key => key.includes('supabase') || key.includes('sb-'));
+        console.log('localStorage内のSupabaseキー:', supabaseKeys);
+        
+        supabaseKeys.forEach(key => {
+          const value = localStorage.getItem(key);
+          if (value) {
+            try {
+              const parsed = JSON.parse(value);
+              console.log(`localStorage[${key}]:`, {
+                hasAccessToken: !!parsed?.access_token,
+                hasRefreshToken: !!parsed?.refresh_token,
+                userId: parsed?.user?.id || 'なし',
+                email: parsed?.user?.email || 'なし'
+              });
+            } catch (e) {
+              console.log(`localStorage[${key}]: (JSON解析不可):`, value.substring(0, 100));
+            }
+          }
+        });
+      } catch (error) {
+        console.error('localStorage確認エラー:', error);
+      }
+    };
+    
     // セッション取得関数（リトライ機能付き）
     const fetchSession = async (retryCount = 0) => {
       try {
+        console.log(`セッション取得試行 (${retryCount + 1}回目)`);
+        
+        // localStorageを確認
+        if (retryCount === 0) {
+          checkLocalStorage();
+        }
+        
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (!mounted) return;
@@ -45,8 +80,21 @@ export function useAuth(): UseAuthReturn {
           hasSession: !!session,
           userId: session?.user?.id || '未ログイン',
           email: session?.user?.email || 'なし',
+          hasAccessToken: !!session?.access_token,
+          hasRefreshToken: !!session?.refresh_token,
+          expiresAt: session?.expires_at ? new Date(session.expires_at * 1000).toISOString() : 'なし',
           retryCount
         });
+        
+        // セッションがない場合、localStorageを再確認
+        if (!session && retryCount === 0) {
+          console.warn('セッションが取得できませんでした。localStorageを再確認します...');
+          setTimeout(() => {
+            checkLocalStorage();
+            fetchSession(1);
+          }, 500);
+          return;
+        }
         
         setUser(session?.user ?? null);
         setLoading(false);
