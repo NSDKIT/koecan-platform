@@ -417,28 +417,9 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
               
               return { 
                 success: false, 
-                message: '登録に失敗しました。ユーザーの作成に問題が発生しました。しばらく時間をおいてから再度お試しください。' 
+                message: '登録に失敗しました。ユーザーの作成に問題が発生しました。Supabase Dashboardでauth.usersテーブルにユーザーが作成されているか確認してください。詳細はTROUBLESHOOTING_REGISTRATION.mdを参照してください。' 
               };
             }
-          } else {
-            console.warn('Service Roleでのユーザー作成に失敗、通常のsignUpを試行:', adminError);
-            // Service Roleでの作成に失敗した場合は通常のsignUpを試行
-            const signUpResult = await supabase.auth.signUp({
-              email: payload.email,
-              password: payload.password,
-              options: {
-                data: { 
-                  referral_code: payload.referralCode || '',
-                  role: 'monitor'
-                }
-              }
-            });
-            
-            if (signUpResult.error) {
-              throw signUpResult.error;
-            }
-            createdUser = signUpResult.data?.user || null;
-          }
         } catch (serviceRoleError) {
           console.warn('Service Roleでのユーザー作成エラー、通常のsignUpを試行:', serviceRoleError);
           // Service Roleでの作成に失敗した場合は通常のsignUpを試行
