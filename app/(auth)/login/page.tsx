@@ -25,59 +25,25 @@ export default function LoginPage() {
 
     startTransition(async () => {
       try {
-        // クライアント側でログインを試行（セッションを確立）
-        console.log('クライアント側でログインを試行します:', { email });
-        const { getBrowserSupabase } = await import('@/lib/supabaseClient');
-        const supabase = getBrowserSupabase();
-        
-        const { data: clientLoginData, error: clientLoginError } = await supabase.auth.signInWithPassword({
-          email,
-          password
-        });
-        
-        if (clientLoginError) {
-          console.error('クライアント側ログインエラー:', clientLoginError);
-          setError('ログインに失敗しました。メールアドレスとパスワードを確認してください。');
-          return;
-        }
-        
-        if (!clientLoginData?.session) {
-          console.error('クライアント側ログインが成功したが、セッションが取得できませんでした');
-          setError('ログインに失敗しました。セッションを確立できませんでした。');
-          return;
-        }
-        
-        console.log('クライアント側ログイン成功:', {
-          userId: clientLoginData.session.user.id,
-          email: clientLoginData.session.user.email
-        });
-        
-        // サーバー側でもログイン処理を実行（ロール取得とリダイレクトURL決定のため）
+        // サーバー側でログイン処理を実行（セッションをクッキーに保存）
         const result = await loginAction(formData);
         
+        console.log('ログイン結果:', result);
+        
         if (result && !result.success) {
-          // サーバー側でエラーが発生した場合でも、クライアント側でログインは成功している
-          console.warn('サーバー側ログインでエラー:', result.message);
-          // リダイレクトは続行
+          const errorMessage = result.message || 'ログインに失敗しました';
+          console.error('ログイン失敗:', errorMessage);
+          setError(errorMessage);
+          return;
         }
         
-        // リダイレクトURLを取得（サーバー側の結果から、またはデフォルト）
+        // リダイレクトURLを取得（デフォルトは/dashboard）
         const redirectUrl = result?.redirectUrl || '/dashboard';
         
         console.log('ログイン成功。リダイレクト先:', redirectUrl);
         
-        // セッションが確立されたことを確認
-        const { data: sessionCheck } = await supabase.auth.getSession();
-        console.log('リダイレクト前のセッション確認:', {
-          hasSession: !!sessionCheck?.session,
-          userId: sessionCheck?.session?.user?.id || 'なし'
-        });
-        
-        // セッションが確立されるまで少し待ってからリダイレクト
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
+        // サーバー側でログインが成功し、セッションがクッキーに保存されている
         // ページ全体をリロードしてセッションを確実に反映
-        // router.push()ではセッションが反映されない場合があるため、window.location.hrefを使用
         window.location.href = redirectUrl;
       } catch (err) {
         console.error('ログインエラー:', err);
