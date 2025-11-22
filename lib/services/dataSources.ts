@@ -166,7 +166,18 @@ export async function fetchMonitorDashboardData(userId?: string): Promise<Monito
       userId,
       profileName: profileData.name,
       profileEmail: profileData.email,
-      referralCode: profileData.referral_code
+      referralCode: profileData.referral_code,
+      allFields: Object.keys(profileData),
+      rawData: profileData
+    });
+    
+    // mapProfileで変換
+    const mappedProfile = mapProfile(profileData);
+    console.log('プロフィールマッピング後:', {
+      id: mappedProfile.id,
+      name: mappedProfile.name,
+      email: mappedProfile.email,
+      occupation: mappedProfile.occupation
     });
 
     // プロフィールが取得できたので、他のデータも取得（エラーがあっても続行）
@@ -202,8 +213,16 @@ export async function fetchMonitorDashboardData(userId?: string): Promise<Monito
       };
     }
 
+    // プロフィールマッピング結果を確認
+    const mappedProfile = mapProfile(profileData);
+    console.log('最終的に返すプロフィール:', {
+      id: mappedProfile.id,
+      name: mappedProfile.name,
+      email: mappedProfile.email
+    });
+    
     return {
-      profile: mapProfile(profileData),
+      profile: mappedProfile,
       surveys: (surveyRes.data ?? []).map(mapSurvey),
       pointTransactions: (pointRes.data ?? []).map(mapPointTransaction),
       rewardItems: (rewardsRes.data ?? []).map(mapReward),
@@ -215,7 +234,11 @@ export async function fetchMonitorDashboardData(userId?: string): Promise<Monito
       policyDocuments: (policyRes.data ?? []).map(mapPolicyDocument)
     };
   } catch (error) {
-    console.error('Supabase fetch failed. Falling back to mock data.', error);
+    console.error('Supabase fetch failed. Falling back to mock data.', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      userId
+    });
     return fallbackMonitor;
   }
 }
