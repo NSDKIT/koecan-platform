@@ -296,7 +296,7 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
     try {
       // 1. ユーザーを作成
       // Service Roleが利用可能な場合は、Service Roleを使ってユーザーを作成（メール確認をスキップ）
-      let createdUser: { id: string } | null = null;
+      let createdUser: { id: string; email?: string; created_at?: string } | null = null;
       let serviceRoleSupabaseForUser: ReturnType<typeof getSupabaseServiceRole> | null = null;
       
       if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -316,33 +316,69 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
           
           if (!adminError && adminUserData?.user) {
             createdUser = adminUserData.user;
-            console.log('Service Roleでユーザーを作成しました:', createdUser.id);
+            console.log('Service Roleでユーザーを作成しました:', {
+              userId: createdUser.id,
+              email: adminUserData.user.email,
+              created_at: adminUserData.user.created_at
+            });
             
-            // 注意: auth.admin.createUser()は非同期でデータベースに反映される場合があるため、
-            // 外部キー制約のあるプロフィールを作成する前に、ユーザーがauth.usersテーブルに
-            // 実際に保存されたかを確認する（最大3回再試行、500ms間隔）
-            // これにより、外部キー制約エラーを回避できる
+            // 外部キー制約エラーを回避するため、ユーザーが確実にauth.usersテーブルに
+            // 保存されていることを確認（最大5回再試行、1000ms間隔）
+            // 注: auth.admin.createUser()は通常即座に反映されるが、
+            // ネットワーク遅延やトランザクション処理により反映が遅れる場合がある
             let userVerified = false;
-            for (let i = 0; i < 3; i++) {
-              const { data: verifyUser, error: verifyError } = await serviceRoleSupabaseForUser.auth.admin.getUserById(createdUser.id);
-              
-              if (!verifyError && verifyUser?.user) {
-                userVerified = true;
-                console.log(`ユーザーがauth.usersテーブルに反映されたことを確認 (試行 ${i + 1}):`, createdUser.id);
-                break;
-              }
-              
-              if (i < 2) {
-                console.warn(`ユーザーの反映確認失敗 (試行 ${i + 1}/3)、500ms待機後に再試行:`, verifyError);
-                await new Promise(resolve => setTimeout(resolve, 500));
-              } else {
-                console.error('ユーザーの反映確認失敗: auth.usersテーブルからユーザーを取得できませんでした', verifyError);
-                throw new Error('ユーザーがauth.usersテーブルに反映されていません。');
+            let lastError: any = null;
+            
+            for (let i = 0; i < 5; i++) {
+              try {
+                const { data: verifyUser, error: verifyError } = await serviceRoleSupabaseForUser.auth.admin.getUserById(createdUser.id);
+                
+                if (!verifyError && verifyUser?.user) {
+                  userVerified = true;
+                  console.log(`ユーザーがauth.usersテーブルに反映されたことを確認 (試行 ${i + 1}/5):`, {
+                    userId: verifyUser.user.id,
+                    email: verifyUser.user.email
+                  });
+                  break;
+                }
+                
+                lastError = verifyError;
+                if (i < 4) {
+                  console.warn(`ユーザーの反映確認失敗 (試行 ${i + 1}/5)、1000ms待機後に再試行:`, {
+                    error: verifyError?.message,
+                    userId: createdUser.id
+                  });
+                  // より長い待機時間（1000ms）で再試行
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+              } catch (verifyException) {
+                lastError = verifyException;
+                if (i < 4) {
+                  console.warn(`ユーザーの反映確認で例外が発生 (試行 ${i + 1}/5)、1000ms待機後に再試行:`, verifyException);
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                }
               }
             }
             
             if (!userVerified) {
-              throw new Error('ユーザーがauth.usersテーブルに反映されませんでした。');
+              console.error('ユーザーの反映確認に失敗。ユーザー作成は成功したが、auth.usersテーブルから取得できませんでした:', {
+                userId: createdUser.id,
+                email: createdUser.email,
+                lastError: lastError?.message || lastError
+              });
+              
+              // ユーザーを削除してからエラーを返す
+              try {
+                await serviceRoleSupabaseForUser.auth.admin.deleteUser(createdUser.id);
+                console.log('作成されたユーザーを削除しました:', createdUser.id);
+              } catch (deleteError) {
+                console.error('ユーザー削除エラー（無視）:', deleteError);
+              }
+              
+              return { 
+                success: false, 
+                message: '登録に失敗しました。ユーザーの作成に問題が発生しました。しばらく時間をおいてから再度お試しください。' 
+              };
             }
           } else {
             console.warn('Service Roleでのユーザー作成に失敗、通常のsignUpを試行:', adminError);
