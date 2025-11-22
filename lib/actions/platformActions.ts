@@ -406,13 +406,29 @@ export async function submitSurveyResponse(formData: FormData) {
     surveyId,
     userId,
     hasAnswersJson: !!answersJson,
-    answersJsonLength: answersJson?.length
+    answersJsonLength: answersJson?.length,
+    answersJsonPreview: answersJson?.substring(0, 200)
   });
 
-  if (!surveyId || !userId || !answersJson) {
+  // バリデーション（空文字列もチェック）
+  if (!surveyId || surveyId.trim() === '') {
     return { 
       success: false, 
-      message: `必要な情報が不足しています。surveyId: ${surveyId ? 'あり' : 'なし'}, userId: ${userId ? 'あり' : 'なし'}, answersJson: ${answersJson ? 'あり' : 'なし'}` 
+      message: 'アンケートIDが取得できませんでした。ページを再読み込みしてください。' 
+    };
+  }
+
+  if (!userId || userId.trim() === '') {
+    return { 
+      success: false, 
+      message: 'ユーザーIDが取得できませんでした。再度ログインしてください。' 
+    };
+  }
+
+  if (!answersJson || answersJson.trim() === '') {
+    return { 
+      success: false, 
+      message: '回答データが送信されませんでした。すべての質問に回答してください。' 
     };
   }
 
