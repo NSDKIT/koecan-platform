@@ -346,14 +346,8 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
       
       // Service Roleが設定されているか確認
       if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-        // Service Roleが設定されていない場合、ユーザーを削除してエラーを返す
-        try {
-          // Service Roleなしでユーザーを削除することはできないため、エラーメッセージのみ返す
-          console.error('SUPABASE_SERVICE_ROLE_KEYが設定されていません。プロフィール作成ができません。');
-        } catch (deleteError) {
-          console.error('ユーザー削除エラー（無視）:', deleteError);
-        }
-        
+        // Service Roleが設定されていない場合、エラーメッセージを返す
+        console.error('SUPABASE_SERVICE_ROLE_KEYが設定されていません。プロフィール作成ができません。');
         return { 
           success: false, 
           message: '登録に失敗しました。プロフィールの保存に失敗しました。SUPABASE_SERVICE_ROLE_KEYの設定が必要です。Supabase Dashboardの「Settings」→「API」からService Role Keyを取得して、環境変数に設定してください。' 
@@ -363,18 +357,62 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
       try {
         // Service Roleを使用してプロフィールを作成（RLSポリシーをバイパス）
         serviceRoleSupabase = getSupabaseServiceRole();
-        profileInsertResult = await serviceRoleSupabase
-          .from('monitor_profiles')
-          .insert(profileData as any);
+        
+        // 外部キー制約のため、auth.usersテーブルにユーザーが確実に存在することを確認
+        // ユーザー作成後、少し待ってからプロフィールを作成（トランザクションの確実性のため）
+        let retryCount = 0;
+        const maxRetries = 5;
+        
+        while (retryCount < maxRetries) {
+          // ユーザーがauth.usersテーブルに存在することを確認
+          const { data: authUser, error: authCheckError } = await serviceRoleSupabase.auth.admin.getUserById(data.user.id);
+          
+          if (authCheckError || !authUser?.user) {
+            console.warn(`ユーザー確認失敗 (試行 ${retryCount + 1}/${maxRetries}):`, authCheckError);
+            if (retryCount < maxRetries - 1) {
+              // 少し待ってから再試行（500ms待機）
+              await new Promise(resolve => setTimeout(resolve, 500));
+              retryCount++;
+              continue;
+            } else {
+              throw new Error('ユーザーがauth.usersテーブルに作成されていません。');
+            }
+          }
+          
+          // ユーザーが存在することを確認できたので、プロフィールを作成
+          profileInsertResult = await serviceRoleSupabase
+            .from('monitor_profiles')
+            .insert(profileData as any);
+          
+          // プロフィール作成が成功した場合、ループを抜ける
+          if (!profileInsertResult.error) {
+            break;
+          }
+          
+          // 外部キー制約エラーの場合、少し待ってから再試行
+          if (profileInsertResult.error.message?.includes('foreign key constraint')) {
+            console.warn(`外部キー制約エラー (試行 ${retryCount + 1}/${maxRetries}):`, profileInsertResult.error);
+            if (retryCount < maxRetries - 1) {
+              await new Promise(resolve => setTimeout(resolve, 500));
+              retryCount++;
+              continue;
+            }
+          }
+          
+          // その他のエラーは再試行しない
+          break;
+        }
       } catch (serviceRoleError) {
         console.error('Service Roleを使用したプロフィール作成エラー:', serviceRoleError);
         
         // Service Roleでの作成に失敗した場合、ユーザーを削除してエラーを返す
-        try {
-          await serviceRoleSupabase!.auth.admin.deleteUser(data.user.id);
-          console.log('プロフィール作成失敗のため、作成されたユーザーを削除しました:', data.user.id);
-        } catch (deleteError) {
-          console.error('ユーザー削除エラー（無視）:', deleteError);
+        if (serviceRoleSupabase) {
+          try {
+            await serviceRoleSupabase.auth.admin.deleteUser(data.user.id);
+            console.log('プロフィール作成失敗のため、作成されたユーザーを削除しました:', data.user.id);
+          } catch (deleteError) {
+            console.error('ユーザー削除エラー（無視）:', deleteError);
+          }
         }
         
         const errorMsg = serviceRoleError instanceof Error ? serviceRoleError.message : String(serviceRoleError);
@@ -384,7 +422,7 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
         };
       }
 
-      if (profileInsertResult.error) {
+      if (profileInsertResult?.error) {
         console.error('プロフィール作成エラー:', profileInsertResult.error);
         
         // プロフィール作成に失敗した場合、作成されたユーザーを削除して登録を失敗とする
@@ -399,6 +437,9 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
         
         // エラーメッセージを返す
         let errorMessage = profileInsertResult.error.message || '不明なエラー';
+        if (errorMessage.includes('foreign key constraint')) {
+          errorMessage += '。auth.usersテーブルにユーザーが正しく作成されていない可能性があります。';
+        }
         if (errorMessage.includes('row-level security') || errorMessage.includes('RLS')) {
           errorMessage += '。SUPABASE_SERVICE_ROLE_KEYの設定を確認してください。';
         }
