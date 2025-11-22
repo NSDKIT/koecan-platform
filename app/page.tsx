@@ -1,84 +1,207 @@
+'use client';
+
 import Link from 'next/link';
-import { MetricCard } from '@/components/MetricCard';
-import { Section } from '@/components/Section';
+import { useEffect, useState } from 'react';
 
-const highlights = [
-  'AIマッチングで最適なアンケートをレコメンド',
-  'LINE/プッシュ通知で即時に案件を配信',
-  '友達紹介 × FAQ × お知らせ機能を統合',
-  'Supabase + Next.jsでセキュアにスケール'
+const features = [
+  {
+    icon: '✨',
+    text: '自分にマッチした企業に出会える'
+  },
+  {
+    icon: '👤',
+    text: '就活の専門家に相談できる'
+  },
+  {
+    icon: '🏢',
+    text: '企業情報GET'
+  },
+  {
+    icon: '🎁',
+    text: 'それでいて、ポイ活もできる'
+  }
 ];
 
-const roadmap = [
-  { label: 'Week 1', detail: '友達紹介・通知基盤', status: '完了' },
-  { label: 'Week 2', detail: 'FAQ/お知らせCMS + CSV/Markdownインポート', status: '完了' },
-  { label: 'Week 3', detail: '外部ポイント交換API自動化', status: '進行中' },
-  { label: 'Week 4', detail: 'PWA最適化 + ブラウザプッシュ', status: '予定' }
-];
+export default function WelcomePage() {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallButton, setShowInstallButton] = useState(false);
 
-export default function LandingPage() {
+  useEffect(() => {
+    // PWAインストールプロンプトの処理
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallButton(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handler);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+
+    if (outcome === 'accepted') {
+      setShowInstallButton(false);
+    }
+
+    setDeferredPrompt(null);
+  };
+
   return (
-    <main style={{ padding: '3rem 0' }}>
-      <div className="container">
-        <div className="card" style={{ textAlign: 'center', padding: '3rem 2rem' }}>
-          <p className="badge info" style={{ justifyContent: 'center', marginBottom: '1rem' }}>
-            v2.0 要件対応 / Supabase + Next.js 14 + PWA
-          </p>
-          <h1 style={{ fontSize: '2.8rem', margin: '0 0 1rem' }}>声キャン！プラットフォーム</h1>
-          <p style={{ fontSize: '1.2rem', marginBottom: '2rem', color: '#475569' }}>
-            モニター・企業・管理者が1つにつながるアンケート＆キャリア支援PWA。
-            友達紹介/FAQ/お知らせ/LINE/プッシュ通知を統合した最新基盤です。
-          </p>
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Link className="button primary" href="/dashboard">
-              モニターダッシュボード
-            </Link>
-            <Link className="button secondary" href="/client">
-              企業ダッシュボード
-            </Link>
-            <Link className="button secondary" href="/support">
-              サポートダッシュボード
-            </Link>
-            <Link className="button ghost" href="/admin">
-              管理者ダッシュボード
-            </Link>
-          </div>
-        </div>
+    <main style={{ 
+      minHeight: '100vh', 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center',
+      background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+      position: 'relative'
+    }}>
+      {/* 背景パターン */}
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        backgroundImage: 'radial-gradient(circle, rgba(0,0,0,0.03) 1px, transparent 1px)',
+        backgroundSize: '20px 20px',
+        pointerEvents: 'none'
+      }} />
 
-        <Section title="v2.0 ハイライト" subtitle="要件定義書・運用設計書・構築書の反映状況">
-          <div className="two-column">
-            {highlights.map((text) => (
-              <div key={text} className="card" style={{ minHeight: '120px' }}>
-                <p style={{ margin: 0, fontWeight: 600 }}>{text}</p>
+      <div className="container" style={{ 
+        maxWidth: '600px', 
+        width: '90%',
+        position: 'relative',
+        zIndex: 1
+      }}>
+        <div className="card" style={{ 
+          textAlign: 'center', 
+          padding: '3rem 2rem',
+          background: '#fff',
+          borderRadius: '1rem',
+          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.1)'
+        }}>
+          {/* タイトル */}
+          <h1 style={{ 
+            fontSize: '3.5rem', 
+            margin: '0 0 2rem',
+            fontWeight: 'bold',
+            color: '#f97316',
+            letterSpacing: '-0.02em'
+          }}>
+            声キャン！
+          </h1>
+
+          {/* 機能セクション */}
+          <div style={{
+            background: 'linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%)',
+            borderRadius: '0.75rem',
+            padding: '2rem 1.5rem',
+            marginBottom: '2rem'
+          }}>
+            {features.map((feature, index) => (
+              <div 
+                key={index}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  padding: '0.75rem 0',
+                  fontSize: '1rem',
+                  fontWeight: 500,
+                  color: '#1f2937'
+                }}
+              >
+                <span style={{ fontSize: '1.5rem' }}>{feature.icon}</span>
+                <span>{feature.text}</span>
               </div>
             ))}
           </div>
-        </Section>
 
-        <Section title="プロジェクトKPI" subtitle="初年度500ユーザー / 月間5,000回答を想定">
-          <div className="two-column">
-            <MetricCard label="登録モニター" value="512名" trend="+38% vs. 先月" accent="success" />
-            <MetricCard label="月間アンケート回答" value="5,180件" trend="目標達成" accent="success" />
-            <MetricCard label="ポイント交換API稼働" value="99.95%" trend="外部監視" />
-            <MetricCard label="友達紹介経由登録" value="38%" trend="キャンペーン中" accent="warning" />
-          </div>
-        </Section>
+          {/* メインCTA */}
+          <Link 
+            href="/register" 
+            className="button primary" 
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              fontSize: '1.125rem',
+              padding: '1rem 2rem',
+              borderRadius: '0.5rem',
+              fontWeight: 600,
+              textDecoration: 'none',
+              marginBottom: '1rem'
+            }}
+          >
+            はじめる →
+          </Link>
 
-        <Section title="開発ロードマップ" subtitle="要件定義書8章・運用設計書13章をドライブ">
-          <div className="card">
-            <ul className="list-reset">
-              {roadmap.map((item) => (
-                <li key={item.label} style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-                  <div>
-                    <strong>{item.label}</strong>
-                    <p style={{ margin: 0 }}>{item.detail}</p>
-                  </div>
-                  <span className="badge success">{item.status}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </Section>
+          {/* サブテキスト */}
+          <p style={{
+            fontSize: '0.875rem',
+            color: '#64748b',
+            margin: '0 0 1.5rem'
+          }}>
+            無料でアカウントを作成して、今すぐ始めましょう
+          </p>
+
+          {/* PWAインストールボタン */}
+          {(showInstallButton || typeof window !== 'undefined' && 'serviceWorker' in navigator) && (
+            <button
+              onClick={handleInstallClick}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.75rem 1.5rem',
+                background: '#3b82f6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '0.5rem',
+                fontSize: '0.875rem',
+                fontWeight: 500,
+                cursor: 'pointer',
+                boxShadow: '0 4px 6px rgba(59, 130, 246, 0.2)',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 6px 8px rgba(59, 130, 246, 0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 6px rgba(59, 130, 246, 0.2)';
+              }}
+            >
+              <span style={{ fontSize: '1.25rem' }}>↓</span>
+              ホーム画面にアプリを追加
+            </button>
+          )}
+
+          {/* ログインリンク */}
+          <p style={{
+            marginTop: '2rem',
+            fontSize: '0.875rem',
+            color: '#64748b'
+          }}>
+            すでにアカウントをお持ちですか？{' '}
+            <Link 
+              href="/login" 
+              style={{ 
+                color: '#f97316',
+                fontWeight: 500,
+                textDecoration: 'underline'
+              }}
+            >
+              ログイン
+            </Link>
+          </p>
+        </div>
       </div>
     </main>
   );
