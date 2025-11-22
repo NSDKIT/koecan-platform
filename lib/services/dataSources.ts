@@ -103,8 +103,61 @@ export async function fetchMonitorDashboardData(userId?: string): Promise<Monito
     
     if (profileRes.error || !profileRes.data) {
       console.error('プロフィール取得エラー:', profileRes.error || 'データが見つかりません');
-      // プロフィールが取得できない場合は、モックデータを返す
-      return fallbackMonitor;
+      
+      // プロフィールが取得できない場合、認証ユーザー情報を取得して最小限のプロフィールを作成
+      try {
+        const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(userId);
+        
+        if (authError || !authUser?.user) {
+          console.error('認証ユーザー情報の取得に失敗:', authError);
+          // 認証情報も取得できない場合はモックデータを返す
+          return fallbackMonitor;
+        }
+
+        // 認証情報から最小限のプロフィールを作成
+        const minimalProfile: MonitorProfile = {
+          id: authUser.user.id,
+          name: authUser.user.email?.split('@')[0] || 'ユーザー',
+          email: authUser.user.email || '',
+          occupation: '',
+          age: 0,
+          points: 0,
+          referralCode: `KOECAN-${userId.substring(0, 8).toUpperCase()}`,
+          referralCount: 0,
+          referralPoints: 0,
+          isLineLinked: false,
+          pushOptIn: false,
+          tags: [],
+          updatedAt: new Date().toISOString()
+        };
+
+        console.warn('プロフィールが見つかりません。最小限のプロフィールを作成しました:', minimalProfile);
+
+        // プロフィールが見つからない場合でも、最小限のプロフィールでダッシュボードを表示
+        // 他のデータは空配列で返す
+        return {
+          profile: minimalProfile,
+          surveys: [],
+          pointTransactions: [],
+          rewardItems: [],
+          announcements: [],
+          faqItems: [],
+          careerSlots: [],
+          supportTickets: [],
+          referralStatus: {
+            code: minimalProfile.referralCode,
+            totalReferrals: 0,
+            successfulReferrals: 0,
+            pendingReferrals: 0,
+            rewardPoints: 0,
+            lastUpdated: new Date().toISOString()
+          },
+          policyDocuments: []
+        };
+      } catch (fallbackError) {
+        console.error('フォールバック処理エラー:', fallbackError);
+        return fallbackMonitor;
+      }
     }
 
     const profileData = profileRes.data as any;
