@@ -133,8 +133,10 @@ export async function fetchMonitorDashboardData(userId?: string): Promise<Monito
     // プロフィールから紹介コードを取得（referral_statusesが取得できない場合のフォールバック）
     const referralCode = profileData.referral_code || '';
     let referralStatus: ReferralStatus;
-    if (referralRes.data && !referralRes.error) {
-      referralStatus = mapReferral(referralRes.data);
+    const referralResData = referralRes.data as any;
+    const referralResError = referralRes.error;
+    if (referralResData && !referralResError) {
+      referralStatus = mapReferral(referralResData);
     } else {
       // プロフィールから紹介コードを使用してステータスを作成
       referralStatus = {
