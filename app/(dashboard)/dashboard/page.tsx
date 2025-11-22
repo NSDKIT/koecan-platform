@@ -95,9 +95,12 @@ export default function MonitorDashboard() {
     });
 
     if (user && !authLoading) {
+      console.log('ユーザー認証済み、ダッシュボードデータを読み込み開始:', { userId: user.id });
       loadAllDashboardData();
     } else if (!authLoading && !user) {
       // 認証が完了したがユーザーが存在しない場合はローディングを解除
+      console.log('認証完了、ユーザーなし');
+      console.log('ユーザーが存在しないため、ログインページにリダイレクト');
       console.log('認証完了、ユーザーなし');
       setDashboardDataLoading(false);
     }

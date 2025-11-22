@@ -20,23 +20,55 @@ export function useAuth(): UseAuthReturn {
     const supabase = getBrowserSupabase();
     let mounted = true;
     
-    // 現在のセッションを取得
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (!mounted) return;
-      if (error) {
-        console.error('セッション取得エラー:', error);
+    // セッション取得関数（リトライ機能付き）
+    const fetchSession = async (retryCount = 0) => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (!mounted) return;
+        
+        if (error) {
+          console.error('セッション取得エラー:', error);
+          // リトライ（最大5回、1000ms間隔で段階的に増やす）
+          if (retryCount < 5) {
+            const delay = Math.min(1000 * (retryCount + 1), 3000); // 最大3秒
+            console.log(`セッション取得をリトライします (${retryCount + 1}/5, ${delay}ms後)`);
+            setTimeout(() => fetchSession(retryCount + 1), delay);
+            return;
+          }
+          console.warn('セッション取得を最大回数リトライしましたが失敗しました');
+          setLoading(false);
+          return;
+        }
+        
+        console.log('セッション取得完了:', {
+          hasSession: !!session,
+          userId: session?.user?.id || '未ログイン',
+          email: session?.user?.email || 'なし',
+          retryCount
+        });
+        
+        setUser(session?.user ?? null);
         setLoading(false);
-        return;
+      } catch (error) {
+        console.error('セッション取得エラー（例外）:', error);
+        if (mounted) {
+          // リトライ（最大5回、1000ms間隔で段階的に増やす）
+          if (retryCount < 5) {
+            const delay = Math.min(1000 * (retryCount + 1), 3000); // 最大3秒
+            console.log(`セッション取得をリトライします (${retryCount + 1}/5, ${delay}ms後)`);
+            setTimeout(() => fetchSession(retryCount + 1), delay);
+            return;
+          }
+          console.warn('セッション取得を最大回数リトライしましたが失敗しました');
+          setLoading(false);
+        }
       }
-      console.log('セッション取得完了:', session?.user?.id || '未ログイン');
-      setUser(session?.user ?? null);
-      setLoading(false);
-    }).catch((error) => {
-      console.error('セッション取得エラー（例外）:', error);
-      if (mounted) {
-        setLoading(false);
-      }
-    });
+    };
+    
+    // 現在のセッションを取得（リトライ機能付き）
+    // 初回は少し待ってから取得（ページロード直後はクッキーが反映されていない可能性がある）
+    setTimeout(() => fetchSession(), 100);
 
     // 認証状態の変更を監視
     let subscription: { unsubscribe: () => void } | null = null;
@@ -45,7 +77,12 @@ export function useAuth(): UseAuthReturn {
         data: { subscription: authSubscription },
       } = supabase.auth.onAuthStateChange((_event, session) => {
         if (!mounted) return;
-        console.log('認証状態変更:', _event, session?.user?.id || '未ログイン');
+        console.log('認証状態変更:', {
+          event: _event,
+          hasSession: !!session,
+          userId: session?.user?.id || '未ログイン',
+          email: session?.user?.email || 'なし'
+        });
         setUser(session?.user ?? null);
         setLoading(false);
       });

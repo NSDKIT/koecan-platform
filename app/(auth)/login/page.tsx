@@ -46,15 +46,16 @@ export default function LoginPage() {
           
           // セッションが確立されるまで少し待ってからリダイレクト
           // Supabaseのセッションがクッキーに保存されるのを待つ
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 1000));
           
-          // window.location.replaceを使用して確実にリダイレクト（履歴に残さない）
-          window.location.replace(redirectUrl);
+          // ページ全体をリロードしてセッションを確実に反映
+          // window.location.hrefを使用することで、サーバー側のセッションがクライアント側でも確実に読み取られる
+          window.location.href = redirectUrl;
         } else {
           // resultがundefinedの場合もダッシュボードにリダイレクト
           console.warn('ログイン結果がundefinedのため、デフォルトでダッシュボードにリダイレクト');
-          await new Promise(resolve => setTimeout(resolve, 500));
-          window.location.replace('/dashboard');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          window.location.href = '/dashboard';
         }
       } catch (err) {
         console.error('ログインエラー:', err);
