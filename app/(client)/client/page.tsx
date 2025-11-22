@@ -11,9 +11,16 @@ import { clientForServerComponent } from '@/lib/services/supabaseAuth';
 const formatDate = (value: string) => format(new Date(value), 'M/d HH:mm', { locale: ja });
 
 export default async function ClientPage() {
-  const supabase = clientForServerComponent();
-  const { data: { user } } = await supabase.auth.getUser();
-  const userId = user?.id || process.env.DEMO_CLIENT_ID;
+  let userId = process.env.DEMO_CLIENT_ID;
+  
+  try {
+    const supabase = clientForServerComponent();
+    const { data: { user } } = await supabase.auth.getUser();
+    userId = user?.id || process.env.DEMO_CLIENT_ID;
+  } catch (authError) {
+    console.warn('認証エラー（フォールバック）:', authError);
+    userId = process.env.DEMO_CLIENT_ID;
+  }
   
   const data = await fetchClientDashboardData(userId);
 

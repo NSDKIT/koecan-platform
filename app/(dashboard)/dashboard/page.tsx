@@ -7,11 +7,22 @@ import { ReferralCodeCard } from '@/components/ReferralCodeCard';
 import { NotificationPreferenceCard } from '@/components/NotificationPreferenceCard';
 import { fetchMonitorDashboardData } from '@/lib/services/dataSources';
 import { submitExchangeRequest } from '@/lib/actions/platformActions';
+import { clientForServerComponent } from '@/lib/services/supabaseAuth';
 
 const formatDate = (value: string) => format(new Date(value), 'M/d HH:mm', { locale: ja });
 
 export default async function DashboardPage() {
-  const userId = process.env.DEMO_MONITOR_ID;
+  let userId = process.env.DEMO_MONITOR_ID;
+  
+  try {
+    const supabase = clientForServerComponent();
+    const { data: { user } } = await supabase.auth.getUser();
+    userId = user?.id || process.env.DEMO_MONITOR_ID;
+  } catch (authError) {
+    console.warn('認証エラー（フォールバック）:', authError);
+    userId = process.env.DEMO_MONITOR_ID;
+  }
+  
   const data = await fetchMonitorDashboardData(userId);
   const profile = data.profile;
 

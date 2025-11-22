@@ -37,6 +37,16 @@ async function handleNotification(formData: FormData) {
 }
 
 export default async function AdminPage() {
+  let userId: string | undefined;
+  
+  try {
+    const supabase = clientForServerComponent();
+    const { data: { user } } = await supabase.auth.getUser();
+    userId = user?.id;
+  } catch (authError) {
+    console.warn('認証エラー（フォールバック）:', authError);
+  }
+  
   const data = await fetchAdminDashboardData();
   return (
     <main style={{ padding: '2rem 0' }}>

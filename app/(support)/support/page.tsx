@@ -8,6 +8,16 @@ import { fetchSupportDashboardData } from '@/lib/services/dataSources';
 const formatDate = (value: string) => format(new Date(value), 'M/d HH:mm', { locale: ja });
 
 export default async function SupportPage() {
+  let userId: string | undefined;
+  
+  try {
+    const supabase = clientForServerComponent();
+    const { data: { user } } = await supabase.auth.getUser();
+    userId = user?.id;
+  } catch (authError) {
+    console.warn('認証エラー（フォールバック）:', authError);
+  }
+  
   const data = await fetchSupportDashboardData();
 
   return (
