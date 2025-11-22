@@ -75,30 +75,44 @@ export function SurveyAnswerForm({ survey, userId }: SurveyAnswerFormProps) {
         return;
       }
 
+      // 送信前の最終チェック
+      if (!survey.id) {
+        setError('アンケートIDが取得できませんでした。');
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (!userId || userId.trim() === '') {
+        setError('ユーザーIDが取得できませんでした。再度ログインしてください。');
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (Object.keys(answers).length === 0) {
+        setError('回答が入力されていません。');
+        setIsSubmitting(false);
+        return;
+      }
+
       const formData = new FormData();
       formData.append('surveyId', survey.id);
-      formData.append('userId', userId || '');
+      formData.append('userId', userId);
       
-      // すべての質問に対して回答を準備
-      const answersArray = survey.questions.map(q => {
-        const answer = answers[q.id];
-        if (!answer) {
-          // 回答がない場合はデフォルト値を作成
-          return {
-            questionId: q.id,
-            answerText: q.questionType === 'text' ? '' : undefined,
-            answerNumber: (q.questionType === 'number' || q.questionType === 'rating') ? undefined : undefined,
-            selectedOptionIds: (q.questionType === 'single_choice' || q.questionType === 'multiple_choice') ? [] : undefined
-          };
-        }
-        return answer;
-      });
+      // 実際に回答された質問のみを送信
+      const answersArray = Object.values(answers).filter(a => a && a.questionId);
+      
+      if (answersArray.length === 0) {
+        setError('有効な回答がありません。');
+        setIsSubmitting(false);
+        return;
+      }
       
       formData.append('answers', JSON.stringify(answersArray));
 
       console.log('送信するデータ:', {
         surveyId: survey.id,
         userId,
+        answersCount: answersArray.length,
         answersArray
       });
 
