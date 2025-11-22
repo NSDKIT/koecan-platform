@@ -35,22 +35,22 @@ export default function LoginPage() {
             return;
           }
           
-          if (result.redirectUrl) {
-            // リダイレクトURLが返された場合はリダイレクト
-            console.log('リダイレクト先:', result.redirectUrl);
-            
-            // window.locationを使用して確実にリダイレクト
-            window.location.href = result.redirectUrl;
-            return;
-          }
+          // リダイレクトURLを取得（デフォルトは/dashboard）
+          const redirectUrl = result.redirectUrl || '/dashboard';
           
-          // リダイレクトURLがない場合はダッシュボードにリダイレクト
-          console.log('リダイレクトURLがないため、デフォルトでダッシュボードにリダイレクト');
-          window.location.href = '/dashboard';
+          console.log('リダイレクト先:', redirectUrl);
+          
+          // window.location.replaceを使用して確実にリダイレクト（履歴に残さない）
+          // 少し遅延を入れて、ログイン処理が完了するのを待つ
+          setTimeout(() => {
+            window.location.replace(redirectUrl);
+          }, 100);
         } else {
-          // resultがundefinedの場合はダッシュボードにリダイレクト
+          // resultがundefinedの場合もダッシュボードにリダイレクト
           console.log('結果がundefinedのため、デフォルトでダッシュボードにリダイレクト');
-          window.location.href = '/dashboard';
+          setTimeout(() => {
+            window.location.replace('/dashboard');
+          }, 100);
         }
       } catch (err) {
         console.error('ログインエラー:', err);
