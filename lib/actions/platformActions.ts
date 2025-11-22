@@ -317,6 +317,30 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
           if (!adminError && adminUserData?.user) {
             createdUser = adminUserData.user;
             console.log('Service Roleでユーザーを作成しました:', createdUser.id);
+            
+            // ユーザーがauth.usersテーブルに確実に存在することを確認（最大3回再試行）
+            let userVerified = false;
+            for (let i = 0; i < 3; i++) {
+              const { data: verifyUser, error: verifyError } = await serviceRoleSupabaseForUser.auth.admin.getUserById(createdUser.id);
+              
+              if (!verifyError && verifyUser?.user) {
+                userVerified = true;
+                console.log(`ユーザー確認成功 (試行 ${i + 1}):`, createdUser.id);
+                break;
+              }
+              
+              if (i < 2) {
+                console.warn(`ユーザー確認失敗 (試行 ${i + 1}/3)、500ms待機後に再試行:`, verifyError);
+                await new Promise(resolve => setTimeout(resolve, 500));
+              } else {
+                console.error('ユーザー確認失敗: auth.usersテーブルにユーザーが存在しません', verifyError);
+                throw new Error('auth.usersテーブルにユーザーが作成されていません。');
+              }
+            }
+            
+            if (!userVerified) {
+              throw new Error('ユーザーがauth.usersテーブルに確実に作成されませんでした。');
+            }
           } else {
             console.warn('Service Roleでのユーザー作成に失敗、通常のsignUpを試行:', adminError);
             // Service Roleでの作成に失敗した場合は通常のsignUpを試行
