@@ -512,11 +512,46 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
       }
       
       try {
+        // プロフィール作成前に、もう一度ユーザーがauth.usersテーブルに存在することを確認
+        console.log('プロフィール作成前の最終確認:', { userId });
+        const { data: finalCheck, error: finalCheckError } = await serviceRoleSupabase.auth.admin.getUserById(userId);
+        
+        if (finalCheckError || !finalCheck?.user) {
+          console.error('プロフィール作成前の最終確認に失敗:', {
+            error: finalCheckError?.message,
+            userId,
+            hasUser: !!finalCheck?.user
+          });
+          
+          // ユーザーを削除してクリーンアップ
+          try {
+            await serviceRoleSupabase.auth.admin.deleteUser(userId);
+            console.log('ユーザーを削除しました:', userId);
+          } catch (deleteError) {
+            console.error('ユーザー削除エラー（無視）:', deleteError);
+          }
+          
+          return { 
+            success: false, 
+            message: '登録に失敗しました。ユーザーの作成に問題が発生しました。Supabase Dashboardでauth.usersテーブルにユーザーが作成されているか確認してください。詳細はTROUBLESHOOTING_REGISTRATION.mdを参照してください。' 
+          };
+        }
+        
+        console.log('ユーザー確認成功。プロフィールを作成します:', {
+          userId: finalCheck.user.id,
+          email: finalCheck.user.email
+        });
+        
         // Service Roleを使用してプロフィールを作成（RLSポリシーをバイパス）
-        // Service Roleでユーザーを作成した場合は既にauth.usersテーブルに存在するはず
         profileInsertResult = await serviceRoleSupabase
           .from('monitor_profiles')
           .insert(profileData as any);
+        
+        console.log('プロフィール作成結果:', {
+          hasError: !!profileInsertResult.error,
+          error: profileInsertResult.error?.message,
+          userId
+        });
       } catch (serviceRoleError) {
         console.error('Service Roleを使用したプロフィール作成エラー:', serviceRoleError);
         
