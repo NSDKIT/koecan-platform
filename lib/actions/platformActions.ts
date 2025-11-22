@@ -49,6 +49,11 @@ const loginSchema = z.object({
 const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
+  name: z.string().min(1),
+  age: z.coerce.number().int().positive().optional(),
+  gender: z.enum(['male', 'female', 'other']).optional(),
+  occupation: z.string().min(1),
+  location: z.string().optional(),
   referralCode: z.string().min(5).optional()
 });
 
@@ -250,14 +255,20 @@ function redirectToRoleDashboard(role: 'monitor' | 'client' | 'admin' | 'support
   redirect(url);
 }
 
-export async function registerAction(formData: FormData): Promise<{ success: boolean; message: string }> {
+export async function registerAction(formData: FormData): Promise<{ success: boolean; message: string; redirectUrl?: string }> {
   try {
     const email = formData.get('email')?.toString() || '';
     const password = formData.get('password')?.toString() || '';
+    const name = formData.get('name')?.toString() || '';
+    const age = formData.get('age')?.toString() || undefined;
+    const gender = formData.get('gender')?.toString() || undefined;
+    const occupation = formData.get('occupation')?.toString() || '';
+    const location = formData.get('location')?.toString() || undefined;
     const referralCode = formData.get('referralCode')?.toString() || undefined;
 
-    if (!email || !password) {
-      return { success: false, message: 'メールアドレスとパスワードを入力してください。' };
+    // バリデーション
+    if (!email || !password || !name || !occupation) {
+      return { success: false, message: '必須項目（メールアドレス、パスワード、お名前、職業）を入力してください。' };
     }
 
     // Supabaseの基本的な環境変数をチェック（新規登録にはANON_KEYだけで十分）
@@ -272,18 +283,24 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
     const payload = registerSchema.parse({
       email,
       password,
+      name,
+      age: age ? parseInt(age, 10) : undefined,
+      gender: gender as 'male' | 'female' | 'other' | undefined,
+      occupation,
+      location,
       referralCode
     });
 
     const supabase = clientForServerAction();
     
     try {
+      // 1. ユーザーを作成
       const { data, error } = await supabase.auth.signUp({
         email: payload.email,
         password: payload.password,
         options: {
           data: { 
-            referral_code: payload.referralCode,
+            referral_code: payload.referralCode || '',
             role: 'monitor' // デフォルトでモニターロールを設定
           }
         }
@@ -302,7 +319,42 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
         return { success: false, message: 'ユーザーの作成に失敗しました。' };
       }
 
-      return { success: true, message: '仮登録完了。メールをご確認ください。' };
+      // 2. monitor_profilesテーブルに基本情報を保存
+      // 紹介コードを生成（なければランダム生成）
+      const generatedReferralCode = payload.referralCode || `KOECAN-${randomUUID().substring(0, 8).toUpperCase()}`;
+      
+      const { error: profileError } = await supabase
+        .from('monitor_profiles')
+        .insert({
+          user_id: data.user.id,
+          name: payload.name,
+          email: payload.email,
+          occupation: payload.occupation,
+          age: payload.age || null,
+          gender: payload.gender || null,
+          location: payload.location || null,
+          referral_code: generatedReferralCode,
+          points: 0,
+          referral_count: 0,
+          referral_points: 0,
+          is_line_linked: false,
+          push_opt_in: false,
+          tags: []
+        } as any); // 型エラーを回避するための型アサーション
+
+      if (profileError) {
+        console.error('プロフィール作成エラー:', profileError);
+        // プロフィール作成に失敗しても、ユーザーは作成されているため警告のみ
+        console.warn('ユーザーは作成されましたが、プロフィールの作成に失敗しました。', profileError.message);
+        // エラーを無視して続行（後でプロフィールを更新できる）
+      }
+
+      // 3. 登録成功時はダッシュボードにリダイレクト
+      return { 
+        success: true, 
+        message: '登録が完了しました。',
+        redirectUrl: '/dashboard'
+      };
     } catch (supabaseError) {
       console.error('Supabase呼び出しエラー:', supabaseError);
       if (supabaseError instanceof Error) {
