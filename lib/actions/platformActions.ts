@@ -9,6 +9,7 @@ import { getSupabaseServiceRole, isSupabaseConfigured } from '@/lib/services/sup
 import { requestPexExchange } from '@/lib/integrations/pex';
 import { sendLineNotification } from '@/lib/integrations/line';
 import { sendPushNotification } from '@/lib/integrations/fcm';
+import type { QuestionType } from '@/lib/types';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -386,6 +387,113 @@ export async function submitSurveyResponse(formData: FormData) {
   } catch (error) {
     console.error('アンケート回答送信エラー:', error);
     return { success: false, message: '回答の送信に失敗しました。もう一度お試しください。' };
+  }
+}
+
+export async function createSurvey(formData: FormData) {
+  const userId = formData.get('userId')?.toString();
+  const title = formData.get('title')?.toString();
+  const description = formData.get('description')?.toString() || '';
+  const category = formData.get('category')?.toString();
+  const rewardPoints = parseInt(formData.get('rewardPoints')?.toString() || '30', 10);
+  const deadline = formData.get('deadline')?.toString();
+  const questionsJson = formData.get('questions')?.toString();
+
+  if (!userId || !title || !category || !deadline || !questionsJson) {
+    return { success: false, message: '必要な情報が不足しています。' };
+  }
+
+  if (!isSupabaseConfigured()) {
+    return { success: false, message: 'Supabase未設定のため処理できません。' };
+  }
+
+  try {
+    const questions = JSON.parse(questionsJson) as Array<{
+      id: string;
+      questionText: string;
+      questionType: QuestionType;
+      isRequired: boolean;
+      displayOrder: number;
+      options: Array<{ id: string; optionText: string }>;
+    }>;
+
+    if (!Array.isArray(questions) || questions.length === 0) {
+      return { success: false, message: '少なくとも1つ質問を追加してください。' };
+    }
+
+    const supabase = getSupabaseServiceRole();
+    const surveyId = randomUUID();
+    const deadlineDate = new Date(deadline);
+
+    // アンケート基本情報を保存
+    const { error: surveyError } = await supabase.from('surveys').insert({
+      id: surveyId,
+      title,
+      category,
+      reward_points: rewardPoints,
+      questions: questions.length,
+      status: 'open',
+      deadline: deadlineDate.toISOString(),
+      delivery_channels: ['web'],
+      target_tags: [],
+      ai_matching_score: 0
+    } as any);
+
+    if (surveyError) {
+      console.error('アンケート作成エラー:', surveyError);
+      return { success: false, message: 'アンケートの作成に失敗しました。' };
+    }
+
+    // 質問と選択肢を保存（survey_questions と survey_question_options テーブルが存在する場合）
+    try {
+      for (const question of questions) {
+        const questionId = randomUUID();
+
+        // survey_questionsテーブルに保存
+        const { error: questionError } = await (supabase as any).from('survey_questions').insert({
+          id: questionId,
+          survey_id: surveyId,
+          question_text: question.questionText,
+          question_type: question.questionType,
+          is_required: question.isRequired,
+          display_order: question.displayOrder,
+          created_at: new Date().toISOString()
+        });
+
+        if (questionError && !String(questionError).includes('does not exist')) {
+          console.warn('質問の保存に失敗:', questionError);
+        }
+
+        // 選択肢を保存（single_choice, multiple_choice の場合）
+        if (
+          !questionError &&
+          (question.questionType === 'single_choice' || question.questionType === 'multiple_choice') &&
+          question.options.length > 0
+        ) {
+          const optionRecords = question.options.map((option, index) => ({
+            id: randomUUID(),
+            question_id: questionId,
+            option_text: option.optionText,
+            display_order: index,
+            created_at: new Date().toISOString()
+          }));
+
+          const { error: optionsError } = await (supabase as any).from('survey_question_options').insert(optionRecords);
+
+          if (optionsError && !String(optionsError).includes('does not exist')) {
+            console.warn('選択肢の保存に失敗:', optionsError);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('質問・選択肢の保存に失敗（テーブルが存在しない可能性）:', err);
+    }
+
+    revalidatePath('/client');
+    return { success: true, message: 'アンケートを作成しました！', surveyId };
+  } catch (error) {
+    console.error('アンケート作成エラー:', error);
+    return { success: false, message: 'アンケートの作成に失敗しました。もう一度お試しください。' };
   }
 }
 

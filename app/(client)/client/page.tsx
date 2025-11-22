@@ -91,9 +91,9 @@ export default async function ClientPage() {
             <div className="card">
               <h4>手動作成</h4>
               <p>質問を1つずつ追加してアンケートを作成します。</p>
-              <button className="button primary" type="button" style={{ width: '100%', marginTop: '1rem' }}>
+              <Link href="/client/surveys/create" className="button primary" style={{ width: '100%', marginTop: '1rem', textDecoration: 'none', display: 'block', textAlign: 'center' }}>
                 手動で作成する
-              </button>
+              </Link>
             </div>
             <div className="card">
               <h4>一括インポート</h4>
