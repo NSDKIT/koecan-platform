@@ -77,7 +77,7 @@ export default function MonitorDashboard() {
   const [showCareerModal, setShowCareerModal] = useState(false);
   const [showChatModal, setShowChatModal] = useState(false);
   const [advertisements, setAdvertisements] = useState<Advertisement[]>([]);
-  const [activeTab, setActiveTab] = useState<ActiveTab>('surveys');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('matching');
   const [isMenuOpen, setIsMenuOpen] = useState(false); 
   const menuButtonRef = useRef<HTMLButtonElement>(null); 
 
@@ -458,7 +458,7 @@ export default function MonitorDashboard() {
         <main className={`mx-auto pb-20 ${
           activeTab === 'career_consultation' ? '' : 'max-w-7xl px-4 sm:px-6 lg:px-8 pt-8'
         }`}> 
-          {activeTab !== 'career_consultation' && (
+          {activeTab !== 'career_consultation' && activeTab !== 'matching' && (
             <div
               className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 mb-8 flex items-center space-x-4 cursor-pointer"
               onClick={() => setShowPointExchangeModal(true)} 
@@ -466,9 +466,24 @@ export default function MonitorDashboard() {
               <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-full p-4 flex items-center justify-center w-20 h-20 shadow-lg">
                 <Star className="w-10 h-10 text-white" />
               </div>
-                    <div>
+              <div>
                 <p className="text-gray-600 text-lg">獲得ポイント</p>
                 <p className="text-5xl font-bold text-orange-600">{profile?.points || 0}</p>
+              </div>
+            </div>
+          )}
+          
+          {/* キャリア診断タブ用のポイント表示 */}
+          {activeTab === 'matching' && (
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center space-x-4 mb-8">
+                <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-full p-3 flex items-center justify-center w-16 h-16 shadow-lg">
+                  <Star className="w-8 h-8 text-white" />
+                </div>
+                <div className="text-left">
+                  <p className="text-gray-600 text-sm">獲得ポイント</p>
+                  <p className="text-4xl font-bold text-orange-600">{profile?.points || 0}</p>
+                </div>
               </div>
             </div>
           )}
@@ -476,7 +491,9 @@ export default function MonitorDashboard() {
           <div 
             className={`
               transition-colors duration-300
-              ${activeTab === 'career_consultation' ? 'bg-transparent p-0' : 'backdrop-blur-sm rounded-2xl bg-white/80 p-8'}
+              ${activeTab === 'career_consultation' ? 'bg-transparent p-0' : 
+                activeTab === 'matching' ? 'bg-transparent p-0' : 
+                'backdrop-blur-sm rounded-2xl bg-white/80 p-8'}
             `}
           > 
             {activeTab === 'surveys' && (

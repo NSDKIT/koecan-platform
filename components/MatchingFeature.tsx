@@ -127,11 +127,16 @@ export function MatchingFeature() {
   return (
     <div>
       {!isLoading && results.length === 0 && (
-        <div className="text-center p-8">
-          <h3 className="text-xl font-bold text-gray-800 mb-2">AIキャリア診断</h3>
-          <p className="text-gray-600 mb-6">あなたのプロフィールアンケートの回答を基に、AIが価値観に合った企業を推薦します。</p>
-          <button onClick={handleStartAnalysis} className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white px-8 py-4 rounded-xl text-lg font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center mx-auto">
-            <Sparkles className="w-5 h-5 mr-2" />
+        <div className="text-center py-12">
+          <h2 className="text-3xl font-bold text-gray-800 mb-4">AIキャリア診断</h2>
+          <p className="text-gray-600 mb-8 text-lg max-w-2xl mx-auto">
+            あなたのプロフィールアンケートの回答を基に、AIが価値観に合った企業を推薦します。
+          </p>
+          <button 
+            onClick={handleStartAnalysis} 
+            className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white px-12 py-5 rounded-xl text-lg font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center mx-auto"
+          >
+            <Sparkles className="w-6 h-6 mr-2" />
             診断を開始する
           </button>
         </div>
