@@ -72,7 +72,7 @@ const notificationSchema = z.object({
   cta: z.string().optional()
 });
 
-export async function loginAction(formData: FormData): Promise<{ success: boolean; message?: string; redirectUrl?: string } | void> {
+export async function loginAction(formData: FormData): Promise<{ success: boolean; message?: string; redirectUrl?: string }> {
   try {
     const email = formData.get('email')?.toString() || '';
     const password = formData.get('password')?.toString() || '';
@@ -83,11 +83,10 @@ export async function loginAction(formData: FormData): Promise<{ success: boolea
     if (testAccount) {
       // テスト用アカウントの場合、パスワードが空または正しいパスワードならログイン許可
       if (!password || password === testAccount.password) {
-        // Supabase未設定の場合は、直接リダイレクト（開発環境用）
+        // Supabase未設定の場合は、直接リダイレクトURLを返す（開発環境用）
         if (!isSupabaseConfigured()) {
-          console.warn('Supabase未設定: テストアカウントで直接リダイレクト');
+          console.warn('Supabase未設定: テストアカウントでリダイレクトURLを返す');
           const redirectUrl = getRoleDashboardUrl(testAccount.role);
-          redirect(redirectUrl);
           return { success: true, redirectUrl };
         }
 
@@ -109,7 +108,6 @@ export async function loginAction(formData: FormData): Promise<{ success: boolea
           }
           // 成功した場合はリダイレクトURLを返す
           const redirectUrl = getRoleDashboardUrl(testAccount.role);
-          redirect(redirectUrl);
           return { success: true, redirectUrl };
         }
         
@@ -122,9 +120,8 @@ export async function loginAction(formData: FormData): Promise<{ success: boolea
           });
         }
         
-        // リダイレクトURLを返す
+        // リダイレクトURLを返す（クライアント側でリダイレクト）
         const redirectUrl = getRoleDashboardUrl(testAccount.role);
-        redirect(redirectUrl);
         return { success: true, redirectUrl };
       }
     }
@@ -141,10 +138,14 @@ export async function loginAction(formData: FormData): Promise<{ success: boolea
     const role = (data.user.user_metadata?.role || 'monitor') as 'monitor' | 'client' | 'admin' | 'support';
     
     const redirectUrl = getRoleDashboardUrl(role);
-    redirect(redirectUrl);
     return { success: true, redirectUrl };
   } catch (error) {
     console.error('ログイン処理エラー:', error);
+    // NEXT_REDIRECTエラーは無視（リダイレクトが発生したことを意味する）
+    if (error && typeof error === 'object' && 'digest' in error && String(error.digest).includes('NEXT_REDIRECT')) {
+      // リダイレクトが発生した場合、クライアント側でリロードを試みる
+      return { success: true };
+    }
     if (error instanceof Error) {
       return { success: false, message: error.message };
     }
@@ -155,12 +156,12 @@ export async function loginAction(formData: FormData): Promise<{ success: boolea
 async function handleTestAccountLogin(
   testAccount: TestAccount,
   supabase: ReturnType<typeof clientForServerAction>
-): Promise<{ success: false; message: string } | void> {
+): Promise<{ success: false; message: string } | { success: true; redirectUrl: string } | void> {
   // Service Roleを使ってユーザーを取得または作成
   if (!isSupabaseConfigured()) {
     console.warn('Supabase未設定: テストアカウント処理をスキップ');
-    redirectToRoleDashboard(testAccount.role);
-    return;
+    const redirectUrl = getRoleDashboardUrl(testAccount.role);
+    return { success: true, redirectUrl };
   }
 
   const serviceRoleSupabase = getSupabaseServiceRole();
