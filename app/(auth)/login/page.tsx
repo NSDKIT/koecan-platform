@@ -38,31 +38,10 @@ export default function LoginPage() {
         
         if (loginError) {
           console.error('クライアント側ログインエラー:', loginError);
-          // サーバー側のログイン処理にフォールバック（テストアカウントなど）
-          const result = await loginAction(formData);
-          
-          if (result && !result.success) {
-            const errorMessage = result.message || 'ログインに失敗しました';
-            setError(errorMessage);
-            return;
-          }
-          
-          // サーバー側でログインが成功した場合、クライアント側でもログインを試行
-          // サーバー側のセッションがクッキーに保存されているので、
-          // クライアント側でも同じ認証情報でログインしてlocalStorageにセッションを保存
-          const { error: retryError } = await supabase.auth.signInWithPassword({
-            email,
-            password
-          });
-          
-          if (retryError) {
-            console.error('クライアント側再ログインエラー:', retryError);
-            // エラーがあってもリダイレクトを続行（サーバー側では成功している）
-          }
-          
-          const redirectUrl = result?.redirectUrl || '/dashboard';
-          console.log('ログイン成功（サーバー側経由）。リダイレクト先:', redirectUrl);
-          window.location.href = redirectUrl;
+          const errorMessage = loginError.message.includes('Invalid login credentials')
+            ? 'メールアドレスまたはパスワードが正しくありません。'
+            : loginError.message;
+          setError(errorMessage);
           return;
         }
         
@@ -74,16 +53,49 @@ export default function LoginPage() {
         
         console.log('クライアント側ログイン成功:', {
           userId: loginData.session.user.id,
-          email: loginData.session.user.email
+          email: loginData.session.user.email,
+          hasAccessToken: !!loginData.session.access_token,
+          hasRefreshToken: !!loginData.session.refresh_token
         });
         
+        // セッションがlocalStorageに保存されていることを確認
+        const sessionCheck = await supabase.auth.getSession();
+        console.log('セッション確認（ログイン後）:', {
+          hasSession: !!sessionCheck.data?.session,
+          userId: sessionCheck.data?.session?.user?.id || 'なし'
+        });
+        
+        if (!sessionCheck.data?.session) {
+          console.error('セッションがlocalStorageに保存されていません');
+          setError('ログインに失敗しました。セッションを保存できませんでした。');
+          return;
+        }
+        
         // サーバー側でもログイン処理を実行（ロール取得とリダイレクトURL決定のため）
+        // ただし、クライアント側で既にログインしているので、これはロール取得のみ
         const result = await loginAction(formData);
         
         // リダイレクトURLを取得（サーバー側の結果から、またはデフォルト）
-        const redirectUrl = result?.redirectUrl || '/dashboard';
+        // ロールはloginData.session.user.user_metadataから取得することも可能
+        const role = loginData.session.user.user_metadata?.role || 'monitor';
+        let redirectUrl = result?.redirectUrl;
         
-        console.log('ログイン成功。リダイレクト先:', redirectUrl);
+        if (!redirectUrl) {
+          // サーバー側の結果がない場合、ロールからリダイレクトURLを決定
+          const roleUrlMap: Record<string, string> = {
+            monitor: '/dashboard',
+            client: '/client',
+            admin: '/admin',
+            support: '/support'
+          };
+          redirectUrl = roleUrlMap[role] || '/dashboard';
+        }
+        
+        console.log('ログイン成功。リダイレクト先:', redirectUrl, { role });
+        
+        // セッションが確実に保存されていることを確認してからリダイレクト
+        // 少し待ってからリダイレクト（セッションの保存を確実にする）
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         // クライアント側でセッションが確立されているので、リダイレクト
         window.location.href = redirectUrl;
