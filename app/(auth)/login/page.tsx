@@ -30,27 +30,31 @@ export default function LoginPage() {
         console.log('ログイン結果:', result);
         
         if (result) {
+          console.log('ログイン結果:', result);
+          
           if (!result.success) {
-            setError(result.message || 'ログインに失敗しました');
+            const errorMessage = result.message || 'ログインに失敗しました';
+            console.error('ログイン失敗:', errorMessage);
+            setError(errorMessage);
             return;
           }
           
           // リダイレクトURLを取得（デフォルトは/dashboard）
           const redirectUrl = result.redirectUrl || '/dashboard';
           
-          console.log('リダイレクト先:', redirectUrl);
+          console.log('ログイン成功。リダイレクト先:', redirectUrl);
+          
+          // セッションが確立されるまで少し待ってからリダイレクト
+          // Supabaseのセッションがクッキーに保存されるのを待つ
+          await new Promise(resolve => setTimeout(resolve, 500));
           
           // window.location.replaceを使用して確実にリダイレクト（履歴に残さない）
-          // 少し遅延を入れて、ログイン処理が完了するのを待つ
-          setTimeout(() => {
-            window.location.replace(redirectUrl);
-          }, 100);
+          window.location.replace(redirectUrl);
         } else {
           // resultがundefinedの場合もダッシュボードにリダイレクト
-          console.log('結果がundefinedのため、デフォルトでダッシュボードにリダイレクト');
-          setTimeout(() => {
-            window.location.replace('/dashboard');
-          }, 100);
+          console.warn('ログイン結果がundefinedのため、デフォルトでダッシュボードにリダイレクト');
+          await new Promise(resolve => setTimeout(resolve, 500));
+          window.location.replace('/dashboard');
         }
       } catch (err) {
         console.error('ログインエラー:', err);

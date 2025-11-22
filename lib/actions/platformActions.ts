@@ -132,17 +132,79 @@ export async function loginAction(formData: FormData): Promise<{ success: boolea
     }
 
     // 通常のログイン処理
+    console.log('通常のログイン処理を開始:', { email, hasPassword: !!password });
     const payload = loginSchema.parse({ email, password });
     const supabase = clientForServerAction();
+    
+    console.log('signInWithPassword呼び出し前:', { email });
     const { data, error } = await supabase.auth.signInWithPassword(payload);
+    
     if (error) {
-      return { success: false, message: error.message };
+      console.error('ログインエラー:', {
+        message: error.message,
+        status: error.status,
+        name: error.name
+      });
+      
+      // エラーメッセージを日本語化
+      let errorMessage = error.message;
+      if (error.message.includes('Invalid login credentials')) {
+        errorMessage = 'メールアドレスまたはパスワードが正しくありません。';
+      } else if (error.message.includes('Email not confirmed')) {
+        // メール確認が必要な場合、Service Roleでメール確認をスキップ
+        const serviceRoleSupabase = getSupabaseServiceRole();
+        try {
+          // ユーザーを検索
+          const { data: users, error: listError } = await serviceRoleSupabase.auth.admin.listUsers();
+          if (!listError && users?.users) {
+            const user = users.users.find(u => u.email === email);
+            if (user) {
+              // メール確認状態を更新
+              const { error: updateError } = await serviceRoleSupabase.auth.admin.updateUserById(user.id, {
+                email_confirm: true
+              });
+              if (!updateError) {
+                console.log('メール確認状態を更新しました。再度ログインを試行します。');
+                // 再度ログインを試行
+                const { data: retryData, error: retryError } = await supabase.auth.signInWithPassword(payload);
+                if (!retryError && retryData?.user) {
+                  const role = (retryData.user.user_metadata?.role || 'monitor') as 'monitor' | 'client' | 'admin' | 'support';
+                  const redirectUrl = getRoleDashboardUrl(role);
+                  return { success: true, redirectUrl };
+                }
+              }
+            }
+          }
+        } catch (confirmError) {
+          console.error('メール確認状態の更新エラー:', confirmError);
+        }
+        errorMessage = 'メールアドレスの確認が完了していません。メールボックスを確認するか、管理者にお問い合わせください。';
+      } else if (error.message.includes('Too many requests')) {
+        errorMessage = 'ログイン試行が多すぎます。しばらく時間をおいてから再度お試しください。';
+      } else if (error.message.includes('User not found')) {
+        errorMessage = 'このメールアドレスで登録されているアカウントが見つかりません。新規登録をお願いします。';
+      }
+      
+      return { success: false, message: errorMessage };
     }
+    
+    if (!data?.user) {
+      console.error('ログイン成功したがユーザーデータが取得できませんでした:', { data });
+      return { success: false, message: 'ログインに失敗しました。ユーザーデータを取得できませんでした。' };
+    }
+    
+    console.log('ログイン成功:', {
+      userId: data.user.id,
+      email: data.user.email,
+      emailConfirmed: data.user.email_confirmed_at ? '確認済み' : '未確認',
+      role: data.user.user_metadata?.role || 'monitor'
+    });
     
     // ユーザーのロールを取得（user_metadataから取得、なければデフォルトでmonitor）
     const role = (data.user.user_metadata?.role || 'monitor') as 'monitor' | 'client' | 'admin' | 'support';
     
     const redirectUrl = getRoleDashboardUrl(role);
+    console.log('リダイレクトURL:', redirectUrl);
     return { success: true, redirectUrl };
   } catch (error) {
     console.error('ログイン処理エラー:', error);
@@ -184,6 +246,7 @@ async function handleTestAccountLogin(
     
     if (!testUser) {
       // ユーザーが存在しない場合は作成
+      console.log('テストアカウントのユーザーが存在しないため、作成します:', { email: testAccount.email });
       const { data: newUser, error: createError } = await serviceRoleSupabase.auth.admin.createUser({
         email: testAccount.email,
         password: testAccount.password,
@@ -197,32 +260,81 @@ async function handleTestAccountLogin(
         console.warn('ユーザー作成に失敗しましたが、通常のログインを試行します');
       } else {
         testUser = newUser.user;
+        console.log('テストアカウントのユーザーを作成しました:', { userId: testUser.id, email: testUser.email });
       }
     } else {
-      // 既存ユーザーのロールを更新
+      // 既存ユーザーのロールとメール確認状態を更新
+      console.log('既存のテストアカウントユーザーを更新:', { userId: testUser.id, email: testUser.email });
       await serviceRoleSupabase.auth.admin.updateUserById(testUser.id, {
-        user_metadata: { role: testAccount.role }
+        user_metadata: { role: testAccount.role },
+        email_confirm: true // メール確認をスキップ
       }).catch(err => {
         console.warn('ロール更新エラー（無視）:', err);
       });
     }
     
     // 通常のクライアントでログイン（再試行）
+    console.log('テストアカウントでログイン再試行:', { email: testAccount.email, userId: testUser?.id });
+    
+    // 少し待ってからログインを試行（ユーザー作成後の反映を待つ）
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
     const { data, error } = await supabase.auth.signInWithPassword({
       email: testAccount.email,
       password: testAccount.password
     });
     
     if (error) {
-      console.error('テストアカウントログインエラー:', error);
+      console.error('テストアカウントログインエラー:', {
+        message: error.message,
+        status: error.status,
+        name: error.name,
+        userId: testUser?.id
+      });
+      
+      // メール確認が必要な場合のエラーを処理
+      if (error.message.includes('Email not confirmed')) {
+        // メール確認をスキップするため、Service Roleでメール確認状態を更新
+        try {
+          if (testUser?.id) {
+            await serviceRoleSupabase.auth.admin.updateUserById(testUser.id, {
+              email_confirm: true
+            });
+            console.log('メール確認状態を更新しました。再度ログインを試行します。');
+            
+            // 再度ログインを試行
+            const { data: retryData, error: retryError } = await supabase.auth.signInWithPassword({
+              email: testAccount.email,
+              password: testAccount.password
+            });
+            
+            if (retryError) {
+              console.error('再試行後もログインエラー:', retryError);
+              return { success: false, message: `ログインに失敗しました: ${retryError.message}` };
+            }
+            
+            const redirectUrl = getRoleDashboardUrl(testAccount.role);
+            return { success: true, redirectUrl };
+          }
+        } catch (updateError) {
+          console.error('メール確認状態の更新エラー:', updateError);
+        }
+      }
+      
       // Supabase未設定またはユーザー作成に失敗した場合は、直接リダイレクトURLを返す
       if (error.message.includes('Invalid login credentials') || error.message.includes('not found')) {
         console.warn('認証情報が無効: 開発環境としてリダイレクトURLを返す');
         const redirectUrl = getRoleDashboardUrl(testAccount.role);
         return { success: true, redirectUrl };
       }
-      return { success: false, message: `テストアカウントでログインできませんでした: ${error.message}` };
+      
+      return { success: false, message: `ログインに失敗しました: ${error.message}` };
     }
+    
+    console.log('テストアカウントログイン成功:', {
+      userId: data.user?.id,
+      email: data.user?.email
+    });
     
     // リダイレクトURLを返す（クライアント側でリダイレクト）
     const redirectUrl = getRoleDashboardUrl(testAccount.role);
