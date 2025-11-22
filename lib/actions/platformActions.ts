@@ -408,7 +408,7 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
     try {
       // 1. ユーザーを作成
       // Service Roleが利用可能な場合は、Service Roleを使ってユーザーを作成（メール確認をスキップ）
-      let createdUser: { id: string; email?: string; created_at?: string } | null = null;
+      let createdUser: { id: string; email?: string; created_at?: string; email_confirmed_at?: string | null } | null = null;
       let serviceRoleSupabaseForUser: ReturnType<typeof getSupabaseServiceRole> | null = null;
       
       if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
