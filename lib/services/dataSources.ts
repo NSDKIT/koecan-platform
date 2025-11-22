@@ -322,6 +322,132 @@ export async function fetchSurveyDetail(surveyId: string, userId?: string): Prom
   }
 }
 
+export interface SurveyResponseData {
+  totalResponses: number;
+  responseRate: number;
+  lastResponseAt: string | null;
+  averageResponseTime: string | null;
+  responses: Array<{
+    id: string;
+    userId: string;
+    submittedAt: string;
+    answers: Array<{
+      questionId: string;
+      questionText: string;
+      answerText?: string;
+      answerNumber?: number;
+    }>;
+  }>;
+}
+
+export async function fetchSurveyResponses(surveyId: string): Promise<SurveyResponseData> {
+  if (!isSupabaseConfigured()) {
+    return {
+      totalResponses: 0,
+      responseRate: 0,
+      lastResponseAt: null,
+      averageResponseTime: null,
+      responses: []
+    };
+  }
+
+  try {
+    const supabase = getSupabaseServiceRole();
+
+    // 回答を取得
+    let responses: any[] = [];
+    try {
+      const { data: responseData, error: responseError } = await (supabase as any)
+        .from('survey_responses')
+        .select('*')
+        .eq('survey_id', surveyId)
+        .order('submitted_at', { ascending: false });
+
+      if (!responseError && responseData) {
+        responses = responseData;
+      }
+    } catch (err) {
+      console.warn('survey_responsesテーブルからの取得に失敗:', err);
+    }
+
+    // 個別回答を取得
+    const responseIds = responses.map((r) => r.id);
+    let answers: any[] = [];
+    
+    if (responseIds.length > 0) {
+      try {
+        const { data: answerData, error: answerError } = await (supabase as any)
+          .from('survey_answers')
+          .select('*')
+          .in('response_id', responseIds);
+
+        if (!answerError && answerData) {
+          answers = answerData;
+        }
+      } catch (err) {
+        console.warn('survey_answersテーブルからの取得に失敗:', err);
+      }
+    }
+
+    // 質問情報を取得
+    let questions: any[] = [];
+    try {
+      const { data: questionData, error: questionError } = await (supabase as any)
+        .from('survey_questions')
+        .select('id, question_text')
+        .eq('survey_id', surveyId);
+
+      if (!questionError && questionData) {
+        questions = questionData;
+      }
+    } catch (err) {
+      console.warn('survey_questionsテーブルからの取得に失敗:', err);
+    }
+
+    // 回答データを整形
+    const formattedResponses = responses.map((response) => {
+      const responseAnswers = answers.filter((a) => a.response_id === response.id);
+      
+      return {
+        id: response.id,
+        userId: response.user_id,
+        submittedAt: response.submitted_at,
+        answers: responseAnswers.map((answer: any) => {
+          const question = questions.find((q) => q.id === answer.question_id);
+          return {
+            questionId: answer.question_id,
+            questionText: question?.question_text || '質問が見つかりません',
+            answerText: answer.answer_text,
+            answerNumber: answer.answer_number
+          };
+        })
+      };
+    });
+
+    // 回答率を計算（仮の値、実際はモニター総数が必要）
+    const responseRate = responses.length > 0 ? Math.min(100, Math.round((responses.length / 100) * 100)) : 0;
+    const lastResponseAt = responses.length > 0 ? responses[0].submitted_at : null;
+    const averageResponseTime = null; // TODO: 回答時間の計算
+
+    return {
+      totalResponses: responses.length,
+      responseRate,
+      lastResponseAt,
+      averageResponseTime,
+      responses: formattedResponses
+    };
+  } catch (error) {
+    console.warn('回答データの取得に失敗:', error);
+    return {
+      totalResponses: 0,
+      responseRate: 0,
+      lastResponseAt: null,
+      averageResponseTime: null,
+      responses: []
+    };
+  }
+}
+
 function mapProfile(row: any): MonitorProfile {
   return {
     id: row.user_id,

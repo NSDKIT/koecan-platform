@@ -782,6 +782,79 @@ export async function importSurveysFromCsv(formData: FormData) {
   }
 }
 
+export async function exportSurveyResponsesCsv(formData: FormData) {
+  const surveyId = formData.get('surveyId')?.toString();
+  const responsesJson = formData.get('responses')?.toString();
+
+  if (!surveyId || !responsesJson) {
+    return { success: false, message: '必要な情報が不足しています。' };
+  }
+
+  try {
+    const responses = JSON.parse(responsesJson) as Array<{
+      id: string;
+      userId: string;
+      submittedAt: string;
+      answers: Array<{
+        questionId: string;
+        questionText: string;
+        answerText?: string;
+        answerNumber?: number;
+      }>;
+    }>;
+
+    // CSV形式でデータを整形
+    let csvContent = '回答ID,回答日時';
+    
+    // 質問列を追加（最初の回答から質問を取得）
+    if (responses.length > 0 && responses[0].answers.length > 0) {
+      responses[0].answers.forEach((answer) => {
+        csvContent += `,"${answer.questionText}"`;
+      });
+    }
+    csvContent += '\n';
+
+    // 回答データを追加
+    responses.forEach((response) => {
+      csvContent += `"${response.id}","${new Date(response.submittedAt).toLocaleString('ja-JP')}"`;
+      response.answers.forEach((answer) => {
+        const value = answer.answerText || answer.answerNumber?.toString() || '';
+        csvContent += `,"${value.replace(/"/g, '""')}"`;
+      });
+      csvContent += '\n';
+    });
+
+    // BOM付きUTF-8でエンコード
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `survey_responses_${surveyId.substring(0, 8)}_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    return { success: true, message: 'CSVファイルをダウンロードしました。' };
+  } catch (error) {
+    console.error('CSVエクスポートエラー:', error);
+    return { success: false, message: 'CSVのエクスポートに失敗しました。' };
+  }
+}
+
+export async function exportSurveyResponsesExcel(formData: FormData) {
+  // Excel形式のエクスポートは、CSVとして実装（実際のExcel形式にはライブラリが必要）
+  // または、CSVをExcelで開ける形式で提供
+  const result = await exportSurveyResponsesCsv(formData);
+  
+  if (result.success) {
+    return { ...result, message: 'Excel形式でダウンロードしました（CSV形式）' };
+  }
+  
+  return result;
+}
+
 export async function regenerateReferralCode(userId: string) {
   const newCode = `KOECAN-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
   if (isSupabaseConfigured()) {
