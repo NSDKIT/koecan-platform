@@ -4,59 +4,89 @@ import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 import { Database } from '@/lib/types/database';
 
 export async function middleware(request: NextRequest) {
-  const res = NextResponse.next();
-  const supabase = createMiddlewareClient<Database>({ req: request, res });
+  try {
+    const res = NextResponse.next();
+    const pathname = request.nextUrl.pathname;
 
-  const {
-    data: { session }
-  } = await supabase.auth.getSession();
+    // 認証が必要ないページ（公開ページ）
+    const publicPaths = ['/', '/login', '/register'];
+    if (publicPaths.includes(pathname)) {
+      return res;
+    }
 
-  const pathname = request.nextUrl.pathname;
+    // 静的ファイルやAPIルートはスキップ
+    if (
+      pathname.startsWith('/_next') ||
+      pathname.startsWith('/api') ||
+      pathname.startsWith('/icon.svg') ||
+      pathname.startsWith('/manifest.json') ||
+      pathname.startsWith('/sw.js') ||
+      pathname.match(/\.(ico|png|jpg|jpeg|gif|webp|svg|css|js)$/)
+    ) {
+      return res;
+    }
 
-  // 認証が必要ないページ（公開ページ）
-  const publicPaths = ['/', '/login', '/register'];
-  if (publicPaths.includes(pathname)) {
+    // 環境変数が設定されていない場合は認証チェックをスキップ（開発環境用）
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      console.warn('Supabase環境変数が設定されていません。認証チェックをスキップします。');
+      return res;
+    }
+
+    const supabase = createMiddlewareClient<Database>({ req: request, res });
+
+    const {
+      data: { session },
+      error
+    } = await supabase.auth.getSession();
+
+    // セッション取得エラーの場合はスキップ（エラーログは出さない）
+    if (error || !session) {
+      // 認証が必要なページの場合はログインページへリダイレクト
+      if (pathname.startsWith('/dashboard') || pathname.startsWith('/admin') || pathname.startsWith('/client') || pathname.startsWith('/support')) {
+        const redirectUrl = new URL('/login', request.url);
+        redirectUrl.searchParams.set('redirect', pathname);
+        return NextResponse.redirect(redirectUrl);
+      }
+      return res;
+    }
+
+    // ユーザーのロールを取得（user_metadataから取得、なければデフォルトでmonitor）
+    const role = (session.user.user_metadata?.role || 'monitor') as 'monitor' | 'client' | 'admin' | 'support';
+
+    // ロールに応じたアクセス制御
+    if (pathname.startsWith('/dashboard')) {
+      if (role !== 'monitor') {
+        // モニター以外はロールに応じたページにリダイレクト
+        const redirectPath = role === 'admin' ? '/admin' : role === 'client' ? '/client' : role === 'support' ? '/support' : '/login';
+        return NextResponse.redirect(new URL(redirectPath, request.url));
+      }
+    } else if (pathname.startsWith('/admin')) {
+      if (role !== 'admin') {
+        // 管理者以外はロールに応じたページにリダイレクト
+        const redirectPath = role === 'monitor' ? '/dashboard' : role === 'client' ? '/client' : role === 'support' ? '/support' : '/login';
+        return NextResponse.redirect(new URL(redirectPath, request.url));
+      }
+    } else if (pathname.startsWith('/client')) {
+      if (role !== 'client') {
+        // 企業以外はロールに応じたページにリダイレクト
+        const redirectPath = role === 'monitor' ? '/dashboard' : role === 'admin' ? '/admin' : role === 'support' ? '/support' : '/login';
+        return NextResponse.redirect(new URL(redirectPath, request.url));
+      }
+    } else if (pathname.startsWith('/support')) {
+      if (role !== 'support') {
+        // サポート以外はロールに応じたページにリダイレクト
+        const redirectPath = role === 'monitor' ? '/dashboard' : role === 'admin' ? '/admin' : role === 'client' ? '/client' : '/login';
+        return NextResponse.redirect(new URL(redirectPath, request.url));
+      }
+    }
+
     return res;
+  } catch (error) {
+    // エラーが発生した場合は、ログを出力してリクエストを続行
+    console.error('Middleware error:', error);
+    // エラー時は認証チェックをスキップしてリクエストを続行
+    return NextResponse.next();
   }
-
-  // 認証が必要なページ
-  if (!session) {
-    const redirectUrl = new URL('/login', request.url);
-    redirectUrl.searchParams.set('redirect', pathname);
-    return NextResponse.redirect(redirectUrl);
-  }
-
-  // ユーザーのロールを取得（user_metadataから取得、なければデフォルトでmonitor）
-  const role = (session.user.user_metadata?.role || 'monitor') as 'monitor' | 'client' | 'admin' | 'support';
-
-  // ロールに応じたアクセス制御
-  if (pathname.startsWith('/dashboard')) {
-    if (role !== 'monitor') {
-      // モニター以外はロールに応じたページにリダイレクト
-      const redirectPath = role === 'admin' ? '/admin' : role === 'client' ? '/client' : role === 'support' ? '/support' : '/login';
-      return NextResponse.redirect(new URL(redirectPath, request.url));
-    }
-  } else if (pathname.startsWith('/admin')) {
-    if (role !== 'admin') {
-      // 管理者以外はロールに応じたページにリダイレクト
-      const redirectPath = role === 'monitor' ? '/dashboard' : role === 'client' ? '/client' : role === 'support' ? '/support' : '/login';
-      return NextResponse.redirect(new URL(redirectPath, request.url));
-    }
-  } else if (pathname.startsWith('/client')) {
-    if (role !== 'client') {
-      // 企業以外はロールに応じたページにリダイレクト
-      const redirectPath = role === 'monitor' ? '/dashboard' : role === 'admin' ? '/admin' : role === 'support' ? '/support' : '/login';
-      return NextResponse.redirect(new URL(redirectPath, request.url));
-    }
-  } else if (pathname.startsWith('/support')) {
-    if (role !== 'support') {
-      // サポート以外はロールに応じたページにリダイレクト
-      const redirectPath = role === 'monitor' ? '/dashboard' : role === 'admin' ? '/admin' : role === 'client' ? '/client' : '/login';
-      return NextResponse.redirect(new URL(redirectPath, request.url));
-    }
-  }
-
-  return res;
 }
 
 export const config = {
@@ -71,4 +101,3 @@ export const config = {
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'
   ]
 };
-
