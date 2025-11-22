@@ -123,7 +123,7 @@ export default function MonitorDashboard() {
     if (!user?.id) throw new Error("User ID is missing.");
     
     try {
-      const { data: profileData, error: profileError } = await supabase
+      const { data: profileData, error: profileError } = await (supabase as any)
         .from('monitor_profiles')
         .select('*') 
         .eq('user_id', user.id)
@@ -131,7 +131,7 @@ export default function MonitorDashboard() {
 
       if (profileError) throw profileError;
 
-      const { data: pointsData, error: pointsError } = await supabase
+      const { data: pointsData, error: pointsError } = await (supabase as any)
         .from('monitor_points_view') 
         .select('points_balance')
         .eq('user_id', user.id)
@@ -141,12 +141,12 @@ export default function MonitorDashboard() {
          throw pointsError;
       }
       
-      const pointsBalance = pointsData ? pointsData.points_balance : 0;
+      const pointsBalance = pointsData ? (pointsData as any).points_balance : 0;
       
       const combinedProfile: MonitorProfile = {
-          ...profileData, 
+          ...(profileData as any), 
           points: pointsBalance, 
-          monitor_id: profileData.id 
+          monitor_id: (profileData as any).id 
       } as MonitorProfile;
 
       setProfile(combinedProfile);

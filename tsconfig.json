@@ -36,6 +36,12 @@
       ],
       "@/config/*": [
         "config/*"
+      ],
+      "@/types": [
+        "types/index"
+      ],
+      "@/types/*": [
+        "types/*"
       ]
     },
     "plugins": [
