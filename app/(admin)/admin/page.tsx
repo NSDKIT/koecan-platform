@@ -3,6 +3,7 @@ import { MetricCard } from '@/components/MetricCard';
 import { StatusPill } from '@/components/StatusPill';
 import { createAnnouncement, createFaq, scheduleNotification } from '@/lib/actions/platformActions';
 import { fetchAdminDashboardData } from '@/lib/services/dataSources';
+import { clientForServerComponent } from '@/lib/services/supabaseAuth';
 
 async function handleAnnouncement(formData: FormData) {
   'use server';

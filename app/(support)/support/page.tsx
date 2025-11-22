@@ -4,6 +4,7 @@ import { Section } from '@/components/Section';
 import { MetricCard } from '@/components/MetricCard';
 import { StatusPill } from '@/components/StatusPill';
 import { fetchSupportDashboardData } from '@/lib/services/dataSources';
+import { clientForServerComponent } from '@/lib/services/supabaseAuth';
 
 const formatDate = (value: string) => format(new Date(value), 'M/d HH:mm', { locale: ja });
 
