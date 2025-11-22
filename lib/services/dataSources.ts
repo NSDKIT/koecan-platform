@@ -170,15 +170,6 @@ export async function fetchMonitorDashboardData(userId?: string): Promise<Monito
       allFields: Object.keys(profileData),
       rawData: profileData
     });
-    
-    // mapProfileで変換
-    const mappedProfile = mapProfile(profileData);
-    console.log('プロフィールマッピング後:', {
-      id: mappedProfile.id,
-      name: mappedProfile.name,
-      email: mappedProfile.email,
-      occupation: mappedProfile.occupation
-    });
 
     // プロフィールが取得できたので、他のデータも取得（エラーがあっても続行）
     const [surveyRes, pointRes, rewardsRes, announcementRes, faqRes, careerRes, supportRes, referralRes, policyRes] =
@@ -215,6 +206,12 @@ export async function fetchMonitorDashboardData(userId?: string): Promise<Monito
 
     // プロフィールマッピング結果を確認
     const mappedProfile = mapProfile(profileData);
+    console.log('プロフィールマッピング後:', {
+      id: mappedProfile.id,
+      name: mappedProfile.name,
+      email: mappedProfile.email,
+      occupation: mappedProfile.occupation
+    });
     console.log('最終的に返すプロフィール:', {
       id: mappedProfile.id,
       name: mappedProfile.name,
