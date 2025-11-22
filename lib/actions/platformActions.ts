@@ -12,26 +12,32 @@ import { sendPushNotification } from '@/lib/integrations/fcm';
 import type { QuestionType } from '@/lib/types';
 
 // テスト用アカウント定義
-const TEST_ACCOUNTS = {
+type TestAccount = {
+  email: string;
+  password: string;
+  role: 'monitor' | 'client' | 'admin' | 'support';
+};
+
+const TEST_ACCOUNTS: Record<string, TestAccount> = {
   monitor: {
     email: 'monitor@test.com',
     password: 'test1234', // 開発環境用の簡単なパスワード
-    role: 'monitor' as const
+    role: 'monitor'
   },
   client: {
     email: 'client@test.com',
     password: 'test1234',
-    role: 'client' as const
+    role: 'client'
   },
   admin: {
     email: 'admin@test.com',
     password: 'test1234',
-    role: 'admin' as const
+    role: 'admin'
   },
   support: {
     email: 'support@test.com',
     password: 'test1234',
-    role: 'support' as const
+    role: 'support'
   }
 };
 
@@ -118,7 +124,7 @@ export async function loginAction(formData: FormData) {
 }
 
 async function handleTestAccountLogin(
-  testAccount: typeof TEST_ACCOUNTS.monitor,
+  testAccount: TestAccount,
   supabase: ReturnType<typeof clientForServerAction>
 ) {
   // Service Roleを使ってユーザーを取得または作成
