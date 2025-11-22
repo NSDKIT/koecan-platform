@@ -72,7 +72,7 @@ const notificationSchema = z.object({
   cta: z.string().optional()
 });
 
-export async function loginAction(formData: FormData) {
+export async function loginAction(formData: FormData): Promise<{ success: boolean; message?: string; redirectUrl?: string } | void> {
   try {
     const email = formData.get('email')?.toString() || '';
     const password = formData.get('password')?.toString() || '';
@@ -86,8 +86,9 @@ export async function loginAction(formData: FormData) {
         // Supabase未設定の場合は、直接リダイレクト（開発環境用）
         if (!isSupabaseConfigured()) {
           console.warn('Supabase未設定: テストアカウントで直接リダイレクト');
-          redirectToRoleDashboard(testAccount.role);
-          return;
+          const redirectUrl = getRoleDashboardUrl(testAccount.role);
+          redirect(redirectUrl);
+          return { success: true, redirectUrl };
         }
 
         const supabase = clientForServerAction();
@@ -106,8 +107,10 @@ export async function loginAction(formData: FormData) {
             // エラーが返された場合は、エラーメッセージを返す
             return result;
           }
-          // 成功した場合はリダイレクト（handleTestAccountLogin内で処理）
-          return;
+          // 成功した場合はリダイレクトURLを返す
+          const redirectUrl = getRoleDashboardUrl(testAccount.role);
+          redirect(redirectUrl);
+          return { success: true, redirectUrl };
         }
         
         // ロールを設定（既存のユーザーでもロールを更新）
@@ -119,9 +122,10 @@ export async function loginAction(formData: FormData) {
           });
         }
         
-        // リダイレクト
-        redirectToRoleDashboard(testAccount.role);
-        return;
+        // リダイレクトURLを返す
+        const redirectUrl = getRoleDashboardUrl(testAccount.role);
+        redirect(redirectUrl);
+        return { success: true, redirectUrl };
       }
     }
 
@@ -136,9 +140,14 @@ export async function loginAction(formData: FormData) {
     // ユーザーのロールを取得（user_metadataから取得、なければデフォルトでmonitor）
     const role = (data.user.user_metadata?.role || 'monitor') as 'monitor' | 'client' | 'admin' | 'support';
     
-    redirectToRoleDashboard(role);
+    const redirectUrl = getRoleDashboardUrl(role);
+    redirect(redirectUrl);
+    return { success: true, redirectUrl };
   } catch (error) {
     console.error('ログイン処理エラー:', error);
+    if (error instanceof Error) {
+      return { success: false, message: error.message };
+    }
     return { success: false, message: 'ログイン処理中にエラーが発生しました。' };
   }
 }
@@ -220,22 +229,23 @@ async function handleTestAccountLogin(
   }
 }
 
-function redirectToRoleDashboard(role: 'monitor' | 'client' | 'admin' | 'support') {
+function getRoleDashboardUrl(role: 'monitor' | 'client' | 'admin' | 'support'): string {
   switch (role) {
     case 'admin':
-      redirect('/admin');
-      break;
+      return '/admin';
     case 'client':
-      redirect('/client');
-      break;
+      return '/client';
     case 'support':
-      redirect('/support');
-      break;
+      return '/support';
     case 'monitor':
     default:
-      redirect('/dashboard');
-      break;
+      return '/dashboard';
   }
+}
+
+function redirectToRoleDashboard(role: 'monitor' | 'client' | 'admin' | 'support') {
+  const url = getRoleDashboardUrl(role);
+  redirect(url);
 }
 
 export async function registerAction(formData: FormData) {

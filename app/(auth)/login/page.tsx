@@ -27,11 +27,23 @@ export default function LoginPage() {
       try {
         const result = await loginAction(formData);
         
-        if (result && !result.success) {
-          setError(result.message || 'ログインに失敗しました');
+        if (result) {
+          if (!result.success) {
+            setError(result.message || 'ログインに失敗しました');
+          } else if (result.redirectUrl) {
+            // リダイレクトURLが返された場合はリダイレクト
+            router.push(result.redirectUrl);
+            router.refresh();
+          } else {
+            // リダイレクトURLがない場合もページをリロード
+            router.refresh();
+          }
         } else {
-          // リダイレクトが成功した場合、ページをリロード
-          router.refresh();
+          // resultがundefinedの場合（リダイレクトが実行された場合）
+          // 少し待ってからページをリロード
+          setTimeout(() => {
+            router.refresh();
+          }, 500);
         }
       } catch (err) {
         console.error('ログインエラー:', err);
