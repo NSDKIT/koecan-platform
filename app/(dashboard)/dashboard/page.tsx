@@ -12,16 +12,36 @@ import { clientForServerComponent } from '@/lib/services/supabaseAuth';
 const formatDate = (value: string) => format(new Date(value), 'M/d HH:mm', { locale: ja });
 
 export default async function DashboardPage() {
-  let userId = process.env.DEMO_MONITOR_ID;
+  let userId: string | undefined = process.env.DEMO_MONITOR_ID;
   
   try {
     const supabase = clientForServerComponent();
-    const { data: { user } } = await supabase.auth.getUser();
-    userId = user?.id || process.env.DEMO_MONITOR_ID;
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    console.log('ダッシュボード認証チェック:', {
+      hasUser: !!user,
+      userId: user?.id,
+      email: user?.email,
+      authError: authError?.message
+    });
+    
+    if (user?.id) {
+      userId = user.id;
+    } else {
+      console.warn('認証ユーザーが見つかりません。userId:', userId);
+      if (authError) {
+        console.error('認証エラー:', authError.message);
+      }
+    }
   } catch (authError) {
-    console.warn('認証エラー（フォールバック）:', authError);
+    console.error('認証エラー（例外）:', authError);
     userId = process.env.DEMO_MONITOR_ID;
   }
+  
+  console.log('fetchMonitorDashboardData呼び出し前:', {
+    userId,
+    hasDemoId: !!process.env.DEMO_MONITOR_ID
+  });
   
   const data = await fetchMonitorDashboardData(userId);
   const profile = data.profile;
