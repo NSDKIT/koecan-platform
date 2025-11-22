@@ -55,9 +55,26 @@ export default function RegisterPage() {
           setSuccess(result.message || '登録が完了しました。');
           // リダイレクトURLがあれば使用、なければダッシュボードにリダイレクト
           const redirectUrl = result.redirectUrl || '/dashboard';
-          // 2秒後にリダイレクト
-          setTimeout(() => {
-            window.location.replace(redirectUrl);
+          
+          // セッションが確立されるまで待機してからリダイレクト
+          setTimeout(async () => {
+            // セッションを確認
+            const { getBrowserSupabase } = await import('@/lib/supabaseClient');
+            const supabase = getBrowserSupabase();
+            const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+            
+            if (sessionError) {
+              console.error('登録後のセッション確認エラー:', sessionError);
+            } else {
+              console.log('登録後のセッション確認:', {
+                hasSession: !!sessionData?.session,
+                userId: sessionData?.session?.user?.id || 'なし',
+                email: sessionData?.session?.user?.email || 'なし'
+              });
+            }
+            
+            // ページ全体をリロードしてセッションを確実に反映
+            window.location.href = redirectUrl;
           }, 2000);
         } else {
           setError(result.message || '登録に失敗しました');

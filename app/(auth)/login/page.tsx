@@ -48,8 +48,40 @@ export default function LoginPage() {
           // Supabaseのセッションがクッキーに保存されるのを待つ
           await new Promise(resolve => setTimeout(resolve, 1000));
           
-          // ページ全体をリロードしてセッションを確実に反映
-          // window.location.hrefを使用することで、サーバー側のセッションがクライアント側でも確実に読み取られる
+          // セッションを確認
+          const { getBrowserSupabase } = await import('@/lib/supabaseClient');
+          const supabase = getBrowserSupabase();
+          const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+          
+          if (sessionError) {
+            console.error('ログイン後のセッション確認エラー:', sessionError);
+          } else {
+            console.log('ログイン後のセッション確認:', {
+              hasSession: !!sessionData?.session,
+              userId: sessionData?.session?.user?.id || 'なし',
+              email: sessionData?.session?.user?.email || 'なし'
+            });
+          }
+          
+          // セッションが確立されていない場合は、もう少し待つ
+          if (!sessionData?.session) {
+            console.warn('セッションがまだ確立されていないため、追加で待機します...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // 再度セッションを確認
+            const { data: retrySessionData } = await supabase.auth.getSession();
+            if (retrySessionData?.session) {
+              console.log('再試行後のセッション確認成功:', {
+                userId: retrySessionData.session.user.id,
+                email: retrySessionData.session.user.email
+              });
+            } else {
+              console.error('再試行後もセッションが確立されませんでした。');
+            }
+          }
+          
+          // Next.jsのルーターを使用してリダイレクト（ページ全体をリロード）
+          // router.push()だけではクッキーが反映されない可能性があるため、window.location.hrefを使用
           window.location.href = redirectUrl;
         } else {
           // resultがundefinedの場合もダッシュボードにリダイレクト
