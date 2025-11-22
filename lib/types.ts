@@ -160,3 +160,81 @@ export interface SurveyAnswer {
   answerNumber?: number;
   selectedOptionIds?: string[];
 }
+
+// MonitorDashboard.tsxで使用される型定義
+export interface Question {
+  id: string;
+  survey_id: string;
+  question_text: string;
+  question_type: 'text' | 'multiple_choice' | 'rating' | 'yes_no';
+  is_multiple_select?: boolean;
+  required: boolean;
+  order_index: number;
+  options?: string[];
+}
+
+export interface Answer {
+  question_id: string;
+  answer: string;
+}
+
+export interface Advertisement {
+  id: string;
+  company_name?: string;
+  title?: string;
+  description?: string;
+  company_vision?: string;
+  image_url?: string;
+  representative_name?: string;
+  establishment_year?: string;
+  headquarters_location?: string;
+  branch_office_location?: string;
+  employee_count?: string;
+  employee_gender_ratio?: string;
+  employee_avg_age?: string;
+  industries?: string;
+  highlight_point_1?: string;
+  highlight_point_2?: string;
+  highlight_point_3?: string;
+  starting_salary?: string;
+  three_year_retention_rate?: string;
+  avg_annual_income_20s?: string;
+  avg_annual_income_30s?: string;
+  promotion_model_case?: string;
+  recruitment_roles_count?: string;
+  selection_flow_steps?: string[];
+  required_qualifications?: string;
+  working_hours?: string;
+  holidays?: string;
+  annual_holidays?: string;
+  remote_work_available?: boolean;
+  side_job_allowed?: boolean;
+  housing_allowance_available?: boolean;
+  female_parental_leave_rate?: string;
+  male_parental_leave_rate?: string;
+  transfer_existence?: boolean;
+  transfer_frequency?: string;
+  internal_event_frequency?: string;
+  health_management_practices?: string;
+  must_tell_welfare?: string;
+  recruitment_department?: string;
+  recruitment_contact?: string;
+  recruitment_info_page_url?: string;
+  internship_scheduled?: boolean;
+  internship_schedule?: string;
+  internship_capacity?: string;
+  internship_target_students?: string;
+  internship_locations?: string;
+  internship_content_types?: string;
+  internship_paid_unpaid?: string;
+  transport_lodging_stipend?: boolean;
+  internship_application_url?: string;
+  official_website_url?: string;
+  official_line_url?: string;
+  instagram_url?: string;
+  tiktok_url?: string;
+  other_sns_sites?: string;
+  is_active?: boolean;
+  priority?: number;
+  display_order?: number;
+}
