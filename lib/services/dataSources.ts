@@ -1,0 +1,323 @@
+import {
+  announcements as mockAnnouncements,
+  careerSlots as mockCareerSlots,
+  dataImportJobs as mockImportJobs,
+  exchangeRequests as mockExchangeRequests,
+  faqItems as mockFaqItems,
+  monitorProfile as mockMonitorProfile,
+  notificationTemplates as mockNotificationTemplates,
+  pointTransactions as mockPointTransactions,
+  policyDocuments as mockPolicyDocuments,
+  referralStatus as mockReferralStatus,
+  rewardItems as mockRewardItems,
+  supportTickets as mockSupportTickets,
+  surveys as mockSurveys
+} from '@/lib/data/mock';
+import type {
+  Announcement,
+  CareerConsultationSlot,
+  DataImportJob,
+  ExchangeRequest,
+  FaqItem,
+  MonitorProfile,
+  NotificationTemplate,
+  PointTransaction,
+  PolicyDocument,
+  ReferralStatus,
+  RewardItem,
+  SupportTicket,
+  Survey
+} from '@/lib/types';
+import { getSupabaseServiceRole, isSupabaseConfigured } from '@/lib/services/supabaseServer';
+
+export interface MonitorDashboardData {
+  profile: MonitorProfile;
+  surveys: Survey[];
+  pointTransactions: PointTransaction[];
+  rewardItems: RewardItem[];
+  announcements: Announcement[];
+  faqItems: FaqItem[];
+  careerSlots: CareerConsultationSlot[];
+  supportTickets: SupportTicket[];
+  referralStatus: ReferralStatus;
+  policyDocuments: PolicyDocument[];
+}
+
+export interface AdminDashboardData {
+  announcements: Announcement[];
+  faqItems: FaqItem[];
+  notificationTemplates: NotificationTemplate[];
+  dataImportJobs: DataImportJob[];
+  exchangeRequests: ExchangeRequest[];
+  policyDocuments: PolicyDocument[];
+}
+
+const fallbackMonitor: MonitorDashboardData = {
+  profile: mockMonitorProfile,
+  surveys: mockSurveys,
+  pointTransactions: mockPointTransactions,
+  rewardItems: mockRewardItems,
+  announcements: mockAnnouncements,
+  faqItems: mockFaqItems,
+  careerSlots: mockCareerSlots,
+  supportTickets: mockSupportTickets,
+  referralStatus: mockReferralStatus,
+  policyDocuments: mockPolicyDocuments
+};
+
+const fallbackAdmin: AdminDashboardData = {
+  announcements: mockAnnouncements,
+  faqItems: mockFaqItems,
+  notificationTemplates: mockNotificationTemplates,
+  dataImportJobs: mockImportJobs,
+  exchangeRequests: mockExchangeRequests,
+  policyDocuments: mockPolicyDocuments
+};
+
+export async function fetchMonitorDashboardData(userId?: string): Promise<MonitorDashboardData> {
+  if (!isSupabaseConfigured() || !userId) {
+    return fallbackMonitor;
+  }
+
+  try {
+    const supabase = getSupabaseServiceRole();
+    const [profileRes, surveyRes, pointRes, rewardsRes, announcementRes, faqRes, careerRes, supportRes, referralRes, policyRes] =
+      await Promise.all([
+        supabase.from('monitor_profiles').select('*').eq('user_id', userId).single(),
+        supabase.from('surveys').select('*').order('ai_matching_score', { ascending: false }).limit(20),
+        supabase.from('point_transactions').select('*').eq('user_id', userId).order('happened_at', { ascending: false }).limit(10),
+        supabase.from('reward_items').select('*').order('points_required'),
+        supabase.from('announcements').select('*').order('published_at', { ascending: false }).limit(10),
+        supabase.from('faq_items').select('*').order('updated_at', { ascending: false }).limit(10),
+        supabase.from('career_slots').select('*').order('starts_at'),
+        supabase.from('support_tickets').select('*').order('created_at', { ascending: false }).limit(10),
+        supabase.from('referral_statuses').select('*').eq('user_id', userId).single(),
+        supabase.from('policy_documents').select('*').order('updated_at', { ascending: false })
+      ]);
+
+    const erroredBucket = [
+      profileRes,
+      surveyRes,
+      pointRes,
+      rewardsRes,
+      announcementRes,
+      faqRes,
+      careerRes,
+      supportRes,
+      referralRes,
+      policyRes
+    ].find((res) => res.error);
+
+    if (erroredBucket) {
+      throw erroredBucket.error;
+    }
+
+    if (!profileRes.data || !referralRes.data) {
+      throw new Error('Missing required monitor profile data');
+    }
+
+    return {
+      profile: mapProfile(profileRes.data),
+      surveys: (surveyRes.data ?? []).map(mapSurvey),
+      pointTransactions: (pointRes.data ?? []).map(mapPointTransaction),
+      rewardItems: (rewardsRes.data ?? []).map(mapReward),
+      announcements: (announcementRes.data ?? []).map(mapAnnouncement),
+      faqItems: (faqRes.data ?? []).map(mapFaq),
+      careerSlots: (careerRes.data ?? []).map(mapCareerSlot),
+      supportTickets: (supportRes.data ?? []).map(mapSupportTicket),
+      referralStatus: mapReferral(referralRes.data),
+      policyDocuments: (policyRes.data ?? []).map(mapPolicyDocument)
+    };
+  } catch (error) {
+    console.warn('Supabase fetch failed. Falling back to mock data.', error);
+    return fallbackMonitor;
+  }
+}
+
+export async function fetchAdminDashboardData(): Promise<AdminDashboardData> {
+  if (!isSupabaseConfigured()) {
+    return fallbackAdmin;
+  }
+
+  try {
+    const supabase = getSupabaseServiceRole();
+    const [announcementRes, faqRes, templateRes, importRes, exchangeRes, policyRes] = await Promise.all([
+      supabase.from('announcements').select('*').order('published_at', { ascending: false }),
+      supabase.from('faq_items').select('*').order('updated_at', { ascending: false }),
+      supabase.from('notification_templates').select('*'),
+      supabase.from('data_import_jobs').select('*').order('submitted_at', { ascending: false }),
+      supabase.from('exchange_requests').select('*').order('requested_at', { ascending: false }),
+      supabase.from('policy_documents').select('*').order('updated_at', { ascending: false })
+    ]);
+
+    const erroredBucket = [announcementRes, faqRes, templateRes, importRes, exchangeRes, policyRes].find((res) => res.error);
+    if (erroredBucket) {
+      throw erroredBucket.error;
+    }
+
+    return {
+      announcements: (announcementRes.data ?? []).map(mapAnnouncement),
+      faqItems: (faqRes.data ?? []).map(mapFaq),
+      notificationTemplates: (templateRes.data ?? []).map(mapNotificationTemplate),
+      dataImportJobs: (importRes.data ?? []).map(mapDataImportJob),
+      exchangeRequests: (exchangeRes.data ?? []).map(mapExchangeRequest),
+      policyDocuments: (policyRes.data ?? []).map(mapPolicyDocument)
+    };
+  } catch (error) {
+    console.warn('Supabase admin fetch failed. Falling back to mock data.', error);
+    return fallbackAdmin;
+  }
+}
+
+function mapProfile(row: any): MonitorProfile {
+  return {
+    id: row.user_id,
+    name: row.name ?? '',
+    email: row.email ?? '',
+    university: row.university ?? undefined,
+    occupation: row.occupation ?? '',
+    age: row.age ?? 0,
+    gender: row.gender ?? undefined,
+    location: row.location ?? undefined,
+    points: row.points ?? 0,
+    referralCode: row.referral_code ?? '',
+    referralCount: row.referral_count ?? 0,
+    referralPoints: row.referral_points ?? 0,
+    isLineLinked: row.is_line_linked ?? false,
+    pushOptIn: row.push_opt_in ?? false,
+    tags: row.tags ?? [],
+    updatedAt: row.updated_at ?? new Date().toISOString()
+  };
+}
+
+function mapSurvey(row: any): Survey {
+  return {
+    id: row.id,
+    title: row.title,
+    category: row.category,
+    rewardPoints: row.reward_points,
+    questions: row.questions,
+    status: row.status,
+    deadline: row.deadline,
+    deliveryChannels: row.delivery_channels ?? [],
+    targetTags: row.target_tags ?? [],
+    aiMatchingScore: row.ai_matching_score ?? 0
+  } as Survey;
+}
+
+function mapPointTransaction(row: any): PointTransaction {
+  return {
+    id: row.id,
+    happenedAt: row.happened_at,
+    amount: row.amount,
+    reason: row.reason,
+    description: row.description
+  } as PointTransaction;
+}
+
+function mapReward(row: any): RewardItem {
+  return {
+    id: row.id,
+    name: row.name,
+    provider: row.provider,
+    pointsRequired: row.points_required,
+    delivery: row.delivery
+  } as RewardItem;
+}
+
+function mapAnnouncement(row: any): Announcement {
+  return {
+    id: row.id,
+    title: row.title,
+    body: row.body,
+    category: row.category,
+    publishedAt: row.published_at,
+    audience: row.audience ?? ['monitor']
+  } as Announcement;
+}
+
+function mapFaq(row: any): FaqItem {
+  return {
+    id: row.id,
+    question: row.question,
+    answer: row.answer,
+    category: row.category,
+    updatedAt: row.updated_at
+  } as FaqItem;
+}
+
+function mapCareerSlot(row: any): CareerConsultationSlot {
+  return {
+    id: row.id,
+    mentor: row.mentor,
+    topic: row.topic,
+    startsAt: row.starts_at,
+    mode: row.mode,
+    availableSeats: row.available_seats
+  } as CareerConsultationSlot;
+}
+
+function mapSupportTicket(row: any): SupportTicket {
+  return {
+    id: row.id,
+    subject: row.subject,
+    channel: row.channel,
+    priority: row.priority,
+    status: row.status,
+    createdAt: row.created_at
+  } as SupportTicket;
+}
+
+function mapReferral(row: any): ReferralStatus {
+  return {
+    code: row.code,
+    totalReferrals: row.total_referrals ?? 0,
+    successfulReferrals: row.successful_referrals ?? 0,
+    pendingReferrals: row.pending_referrals ?? 0,
+    rewardPoints: row.reward_points ?? 0,
+    lastUpdated: row.last_updated ?? new Date().toISOString()
+  } as ReferralStatus;
+}
+
+function mapPolicyDocument(row: any): PolicyDocument {
+  return {
+    id: row.id,
+    title: row.title,
+    version: row.version,
+    updatedAt: row.updated_at,
+    url: row.url
+  } as PolicyDocument;
+}
+
+function mapNotificationTemplate(row: any): NotificationTemplate {
+  return {
+    id: row.id,
+    channel: row.channel,
+    title: row.title,
+    body: row.body,
+    cta: row.cta ?? undefined
+  } as NotificationTemplate;
+}
+
+function mapDataImportJob(row: any): DataImportJob {
+  return {
+    id: row.id,
+    type: row.type,
+    entity: row.entity,
+    status: row.status,
+    submittedBy: row.submitted_by,
+    submittedAt: row.submitted_at
+  } as DataImportJob;
+}
+
+function mapExchangeRequest(row: any): ExchangeRequest {
+  return {
+    id: row.id,
+    userName: row.user_name,
+    rewardName: row.reward_name,
+    pointsUsed: row.points_used,
+    provider: row.provider,
+    status: row.status,
+    requestedAt: row.requested_at
+  } as ExchangeRequest;
+}
