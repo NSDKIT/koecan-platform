@@ -66,10 +66,19 @@ export default function LoginPage() {
         
         console.log('ログイン成功。リダイレクト先:', redirectUrl);
         
-        // セッションが確立されたので、リダイレクト
-        // Next.jsのルーターを使用（クライアント側のセッションが確立されているので）
-        router.push(redirectUrl);
-        router.refresh();
+        // セッションが確立されたことを確認
+        const { data: sessionCheck } = await supabase.auth.getSession();
+        console.log('リダイレクト前のセッション確認:', {
+          hasSession: !!sessionCheck?.session,
+          userId: sessionCheck?.session?.user?.id || 'なし'
+        });
+        
+        // セッションが確立されるまで少し待ってからリダイレクト
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // ページ全体をリロードしてセッションを確実に反映
+        // router.push()ではセッションが反映されない場合があるため、window.location.hrefを使用
+        window.location.href = redirectUrl;
       } catch (err) {
         console.error('ログインエラー:', err);
         setError('ログイン処理中にエラーが発生しました');
