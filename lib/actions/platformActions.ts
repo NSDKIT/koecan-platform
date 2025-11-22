@@ -224,10 +224,10 @@ async function handleTestAccountLogin(
     return { success: true, redirectUrl };
   } catch (error) {
     console.error('テストアカウント処理エラー:', error);
-    // エラーが発生した場合でも、開発環境としてリダイレクトを試行
-    console.warn('エラーが発生しましたが、開発環境としてリダイレクトを試行します');
-    redirectToRoleDashboard(testAccount.role);
-    return;
+    // エラーが発生した場合でも、開発環境としてリダイレクトURLを返す
+    console.warn('エラーが発生しましたが、開発環境としてリダイレクトURLを返します');
+    const redirectUrl = getRoleDashboardUrl(testAccount.role);
+    return { success: true, redirectUrl };
   }
 }
 
