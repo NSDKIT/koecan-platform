@@ -107,11 +107,13 @@ export async function fetchMonitorDashboardData(userId?: string): Promise<Monito
       return fallbackMonitor;
     }
 
+    const profileData = profileRes.data as any;
+    
     console.log('プロフィールデータ取得成功:', {
       userId,
-      profileName: profileRes.data.name,
-      profileEmail: profileRes.data.email,
-      referralCode: profileRes.data.referral_code
+      profileName: profileData.name,
+      profileEmail: profileData.email,
+      referralCode: profileData.referral_code
     });
 
     // プロフィールが取得できたので、他のデータも取得（エラーがあっても続行）
@@ -129,24 +131,24 @@ export async function fetchMonitorDashboardData(userId?: string): Promise<Monito
       ]);
 
     // プロフィールから紹介コードを取得（referral_statusesが取得できない場合のフォールバック）
-    const referralCode = profileRes.data.referral_code || '';
-    let referralStatus;
+    const referralCode = profileData.referral_code || '';
+    let referralStatus: ReferralStatus;
     if (referralRes.data && !referralRes.error) {
       referralStatus = mapReferral(referralRes.data);
     } else {
       // プロフィールから紹介コードを使用してステータスを作成
       referralStatus = {
         code: referralCode,
-        totalReferrals: profileRes.data.referral_count || 0,
+        totalReferrals: profileData.referral_count || 0,
         successfulReferrals: 0,
         pendingReferrals: 0,
-        rewardPoints: profileRes.data.referral_points || 0,
+        rewardPoints: profileData.referral_points || 0,
         lastUpdated: new Date().toISOString()
       };
     }
 
     return {
-      profile: mapProfile(profileRes.data),
+      profile: mapProfile(profileData),
       surveys: (surveyRes.data ?? []).map(mapSurvey),
       pointTransactions: (pointRes.data ?? []).map(mapPointTransaction),
       rewardItems: (rewardsRes.data ?? []).map(mapReward),
