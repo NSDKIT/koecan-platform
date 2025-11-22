@@ -318,28 +318,31 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
             createdUser = adminUserData.user;
             console.log('Service Roleでユーザーを作成しました:', createdUser.id);
             
-            // ユーザーがauth.usersテーブルに確実に存在することを確認（最大3回再試行）
+            // 注意: auth.admin.createUser()は非同期でデータベースに反映される場合があるため、
+            // 外部キー制約のあるプロフィールを作成する前に、ユーザーがauth.usersテーブルに
+            // 実際に保存されたかを確認する（最大3回再試行、500ms間隔）
+            // これにより、外部キー制約エラーを回避できる
             let userVerified = false;
             for (let i = 0; i < 3; i++) {
               const { data: verifyUser, error: verifyError } = await serviceRoleSupabaseForUser.auth.admin.getUserById(createdUser.id);
               
               if (!verifyError && verifyUser?.user) {
                 userVerified = true;
-                console.log(`ユーザー確認成功 (試行 ${i + 1}):`, createdUser.id);
+                console.log(`ユーザーがauth.usersテーブルに反映されたことを確認 (試行 ${i + 1}):`, createdUser.id);
                 break;
               }
               
               if (i < 2) {
-                console.warn(`ユーザー確認失敗 (試行 ${i + 1}/3)、500ms待機後に再試行:`, verifyError);
+                console.warn(`ユーザーの反映確認失敗 (試行 ${i + 1}/3)、500ms待機後に再試行:`, verifyError);
                 await new Promise(resolve => setTimeout(resolve, 500));
               } else {
-                console.error('ユーザー確認失敗: auth.usersテーブルにユーザーが存在しません', verifyError);
-                throw new Error('auth.usersテーブルにユーザーが作成されていません。');
+                console.error('ユーザーの反映確認失敗: auth.usersテーブルからユーザーを取得できませんでした', verifyError);
+                throw new Error('ユーザーがauth.usersテーブルに反映されていません。');
               }
             }
             
             if (!userVerified) {
-              throw new Error('ユーザーがauth.usersテーブルに確実に作成されませんでした。');
+              throw new Error('ユーザーがauth.usersテーブルに反映されませんでした。');
             }
           } else {
             console.warn('Service Roleでのユーザー作成に失敗、通常のsignUpを試行:', adminError);
