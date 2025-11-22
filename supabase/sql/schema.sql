@@ -128,3 +128,50 @@ create table if not exists exchange_requests (
   status text not null,
   requested_at timestamptz not null default now()
 );
+
+-- アンケート質問テーブル
+create table if not exists survey_questions (
+  id uuid primary key default uuid_generate_v4(),
+  survey_id uuid not null references surveys(id) on delete cascade,
+  question_text text not null,
+  question_type varchar(50) not null, -- 'single_choice', 'multiple_choice', 'text', 'number', 'rating'
+  is_required boolean default true,
+  display_order integer default 0,
+  created_at timestamptz default now()
+);
+
+-- 質問選択肢テーブル
+create table if not exists survey_question_options (
+  id uuid primary key default uuid_generate_v4(),
+  question_id uuid not null references survey_questions(id) on delete cascade,
+  option_text text not null,
+  display_order integer default 0,
+  created_at timestamptz default now()
+);
+
+-- アンケート回答テーブル
+create table if not exists survey_responses (
+  id uuid primary key default uuid_generate_v4(),
+  survey_id uuid not null references surveys(id) on delete cascade,
+  user_id uuid not null, -- references auth.users(id) on delete cascade (手動でリンク)
+  submitted_at timestamptz default now(),
+  unique(survey_id, user_id) -- 1ユーザー1回答
+);
+
+-- 個別回答テーブル
+create table if not exists survey_answers (
+  id uuid primary key default uuid_generate_v4(),
+  response_id uuid not null references survey_responses(id) on delete cascade,
+  question_id uuid not null references survey_questions(id) on delete cascade,
+  answer_text text,
+  answer_number integer,
+  created_at timestamptz default now()
+);
+
+-- インデックス作成
+create index if not exists idx_survey_questions_survey_id on survey_questions(survey_id);
+create index if not exists idx_survey_question_options_question_id on survey_question_options(question_id);
+create index if not exists idx_survey_responses_survey_id on survey_responses(survey_id);
+create index if not exists idx_survey_responses_user_id on survey_responses(user_id);
+create index if not exists idx_survey_answers_response_id on survey_answers(response_id);
+create index if not exists idx_survey_answers_question_id on survey_answers(question_id);
