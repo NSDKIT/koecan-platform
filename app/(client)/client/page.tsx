@@ -76,9 +76,9 @@ export default async function ClientPage() {
                       <td>0件</td>
                       <td>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <Link href={`/client/surveys/${survey.id}/edit`} className="button ghost" style={{ fontSize: '0.875rem', textDecoration: 'none' }}>
-                            編集
-                          </Link>
+                          <button className="button ghost" type="button" style={{ fontSize: '0.875rem' }} disabled>
+                            編集（準備中）
+                          </button>
                           <Link href={`/client/surveys/${survey.id}/responses`} className="button ghost" style={{ fontSize: '0.875rem', textDecoration: 'none' }}>
                             回答データ
                           </Link>
