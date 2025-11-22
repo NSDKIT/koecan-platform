@@ -16,10 +16,19 @@ export default function LoginPage() {
             </div>
             <div className="form-group">
               <label htmlFor="password">パスワード</label>
-              <input id="password" name="password" type="password" placeholder="8文字以上" required minLength={8} />
+              <input id="password" name="password" type="password" placeholder="パスワード（テスト用: 空欄可）" />
             </div>
             <button className="button primary" type="submit">ログイン</button>
           </form>
+          <div style={{ marginTop: '1.5rem', padding: '1rem', background: '#f0f9ff', borderRadius: '0.5rem', fontSize: '0.875rem' }}>
+            <strong>テスト用アカウント:</strong>
+            <ul style={{ margin: '0.5rem 0 0 0', paddingLeft: '1.5rem', color: '#475569' }}>
+              <li>モニター: monitor@test.com（パスワード不要）</li>
+              <li>クライアント: client@test.com（パスワード不要）</li>
+              <li>管理者: admin@test.com（パスワード不要）</li>
+              <li>サポート: support@test.com（パスワード不要）</li>
+            </ul>
+          </div>
           <p style={{ marginTop: '1rem' }}>
             アカウントをお持ちでない場合は <Link href="/register">新規登録</Link>
           </p>

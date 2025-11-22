@@ -11,9 +11,33 @@ import { sendLineNotification } from '@/lib/integrations/line';
 import { sendPushNotification } from '@/lib/integrations/fcm';
 import type { QuestionType } from '@/lib/types';
 
+// テスト用アカウント定義
+const TEST_ACCOUNTS = {
+  monitor: {
+    email: 'monitor@test.com',
+    password: 'test1234', // 開発環境用の簡単なパスワード
+    role: 'monitor' as const
+  },
+  client: {
+    email: 'client@test.com',
+    password: 'test1234',
+    role: 'client' as const
+  },
+  admin: {
+    email: 'admin@test.com',
+    password: 'test1234',
+    role: 'admin' as const
+  },
+  support: {
+    email: 'support@test.com',
+    password: 'test1234',
+    role: 'support' as const
+  }
+};
+
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8)
+  password: z.string().min(1) // テスト用アカウントのため最小長を1に変更
 });
 
 const registerSchema = z.object({
@@ -43,10 +67,44 @@ const notificationSchema = z.object({
 });
 
 export async function loginAction(formData: FormData) {
-  const payload = loginSchema.parse({
-    email: formData.get('email'),
-    password: formData.get('password')
-  });
+  const email = formData.get('email')?.toString() || '';
+  const password = formData.get('password')?.toString() || '';
+
+  // テスト用アカウントチェック
+  const testAccount = Object.values(TEST_ACCOUNTS).find(acc => acc.email === email);
+  
+  if (testAccount) {
+    // テスト用アカウントの場合、パスワードが空または正しいパスワードならログイン許可
+    if (!password || password === testAccount.password) {
+      const supabase = clientForServerAction();
+      
+      // まず通常のログインを試行
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: testAccount.email,
+        password: testAccount.password
+      });
+      
+      if (error) {
+        // ログインに失敗した場合は、ユーザーが存在しない可能性がある
+        // Service Roleを使ってユーザーを作成またはログイン
+        return await handleTestAccountLogin(testAccount, supabase);
+      }
+      
+      // ロールを設定（既存のユーザーでもロールを更新）
+      if (data.user) {
+        await supabase.auth.updateUser({
+          data: { role: testAccount.role }
+        });
+      }
+      
+      // リダイレクト
+      redirectToRoleDashboard(testAccount.role);
+      return;
+    }
+  }
+
+  // 通常のログイン処理
+  const payload = loginSchema.parse({ email, password });
   const supabase = clientForServerAction();
   const { data, error } = await supabase.auth.signInWithPassword(payload);
   if (error) {
@@ -56,7 +114,63 @@ export async function loginAction(formData: FormData) {
   // ユーザーのロールを取得（user_metadataから取得、なければデフォルトでmonitor）
   const role = (data.user.user_metadata?.role || 'monitor') as 'monitor' | 'client' | 'admin' | 'support';
   
-  // ロールに応じてリダイレクト先を決定
+  redirectToRoleDashboard(role);
+}
+
+async function handleTestAccountLogin(
+  testAccount: typeof TEST_ACCOUNTS.monitor,
+  supabase: ReturnType<typeof clientForServerAction>
+) {
+  // Service Roleを使ってユーザーを取得または作成
+  const serviceRoleSupabase = getSupabaseServiceRole();
+  
+  try {
+    // 既存ユーザーを取得
+    const { data: existingUsers } = await serviceRoleSupabase.auth.admin.listUsers();
+    let testUser = existingUsers.users.find(u => u.email === testAccount.email);
+    
+    if (!testUser) {
+      // ユーザーが存在しない場合は作成
+      const { data: newUser, error: createError } = await serviceRoleSupabase.auth.admin.createUser({
+        email: testAccount.email,
+        password: testAccount.password,
+        email_confirm: true, // メール確認をスキップ
+        user_metadata: { role: testAccount.role }
+      });
+      
+      if (createError) {
+        console.error('テストアカウント作成エラー:', createError);
+        return { success: false, message: 'テストアカウントの作成に失敗しました。' };
+      }
+      
+      testUser = newUser.user;
+    } else {
+      // 既存ユーザーのロールを更新
+      await serviceRoleSupabase.auth.admin.updateUserById(testUser.id, {
+        user_metadata: { role: testAccount.role }
+      });
+    }
+    
+    // 通常のクライアントでログイン
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: testAccount.email,
+      password: testAccount.password
+    });
+    
+    if (error) {
+      console.error('テストアカウントログインエラー:', error);
+      return { success: false, message: 'テストアカウントでログインできませんでした。' };
+    }
+    
+    redirectToRoleDashboard(testAccount.role);
+    return;
+  } catch (error) {
+    console.error('テストアカウント処理エラー:', error);
+    return { success: false, message: 'テストアカウントの処理に失敗しました。' };
+  }
+}
+
+function redirectToRoleDashboard(role: 'monitor' | 'client' | 'admin' | 'support') {
   switch (role) {
     case 'admin':
       redirect('/admin');
