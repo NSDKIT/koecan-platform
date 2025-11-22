@@ -44,44 +44,45 @@ export default function LoginPage() {
           
           console.log('ログイン成功。リダイレクト先:', redirectUrl);
           
-          // セッションが確立されるまで少し待ってからリダイレクト
-          // Supabaseのセッションがクッキーに保存されるのを待つ
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // サーバー側でログインが成功したが、クライアント側でセッションを確立する必要がある
+          // フォームデータからメールアドレスとパスワードを取得して、クライアント側でログイン
+          const formData = new FormData(e.currentTarget);
+          const email = formData.get('email')?.toString() || '';
+          const password = formData.get('password')?.toString() || '';
           
-          // セッションを確認
-          const { getBrowserSupabase } = await import('@/lib/supabaseClient');
-          const supabase = getBrowserSupabase();
-          const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-          
-          if (sessionError) {
-            console.error('ログイン後のセッション確認エラー:', sessionError);
-          } else {
-            console.log('ログイン後のセッション確認:', {
-              hasSession: !!sessionData?.session,
-              userId: sessionData?.session?.user?.id || 'なし',
-              email: sessionData?.session?.user?.email || 'なし'
-            });
-          }
-          
-          // セッションが確立されていない場合は、もう少し待つ
-          if (!sessionData?.session) {
-            console.warn('セッションがまだ確立されていないため、追加で待機します...');
-            await new Promise(resolve => setTimeout(resolve, 2000));
+          if (email && password) {
+            console.log('クライアント側でログインを試行します:', { email });
+            const { getBrowserSupabase } = await import('@/lib/supabaseClient');
+            const supabase = getBrowserSupabase();
             
-            // 再度セッションを確認
-            const { data: retrySessionData } = await supabase.auth.getSession();
-            if (retrySessionData?.session) {
-              console.log('再試行後のセッション確認成功:', {
-                userId: retrySessionData.session.user.id,
-                email: retrySessionData.session.user.email
+            try {
+              // クライアント側でログインしてセッションを確立
+              const { data: clientLoginData, error: clientLoginError } = await supabase.auth.signInWithPassword({
+                email,
+                password
               });
-            } else {
-              console.error('再試行後もセッションが確立されませんでした。');
+              
+              if (clientLoginError) {
+                console.error('クライアント側ログインエラー:', clientLoginError);
+                // エラーが発生しても、サーバー側でログインは成功しているのでリダイレクト
+              } else if (clientLoginData?.session) {
+                console.log('クライアント側ログイン成功:', {
+                  userId: clientLoginData.session.user.id,
+                  email: clientLoginData.session.user.email
+                });
+              }
+            } catch (clientLoginException) {
+              console.error('クライアント側ログインで例外が発生:', clientLoginException);
+              // 例外が発生しても、サーバー側でログインは成功しているのでリダイレクト
             }
+          } else {
+            console.warn('メールアドレスまたはパスワードが取得できませんでした。サーバー側のセッションに依存します。');
           }
           
-          // Next.jsのルーターを使用してリダイレクト（ページ全体をリロード）
-          // router.push()だけではクッキーが反映されない可能性があるため、window.location.hrefを使用
+          // セッションが確立されるまで少し待ってからリダイレクト
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // ページ全体をリロードしてセッションを確実に反映
           window.location.href = redirectUrl;
         } else {
           // resultがundefinedの場合もダッシュボードにリダイレクト
