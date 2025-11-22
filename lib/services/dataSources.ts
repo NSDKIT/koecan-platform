@@ -27,7 +27,8 @@ import type {
   RewardItem,
   SupportTicket,
   Survey,
-  SurveyDetail
+  SurveyDetail,
+  QuestionType
 } from '@/lib/types';
 import { getSupabaseServiceRole, isSupabaseConfigured } from '@/lib/services/supabaseServer';
 
