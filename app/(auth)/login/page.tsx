@@ -45,11 +45,7 @@ export default function LoginPage() {
           console.log('ログイン成功。リダイレクト先:', redirectUrl);
           
           // サーバー側でログインが成功したが、クライアント側でセッションを確立する必要がある
-          // フォームデータからメールアドレスとパスワードを取得して、クライアント側でログイン
-          const formData = new FormData(e.currentTarget);
-          const email = formData.get('email')?.toString() || '';
-          const password = formData.get('password')?.toString() || '';
-          
+          // 既に取得したemailとpasswordを使用して、クライアント側でログイン
           if (email && password) {
             console.log('クライアント側でログインを試行します:', { email });
             const { getBrowserSupabase } = await import('@/lib/supabaseClient');
