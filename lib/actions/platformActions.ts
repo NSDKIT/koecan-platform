@@ -323,7 +323,9 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
       // 紹介コードを生成（なければランダム生成）
       const generatedReferralCode = payload.referralCode || `KOECAN-${randomUUID().substring(0, 8).toUpperCase()}`;
       
-      const { error: profileError } = await supabase
+      // プロフィール作成にはService Roleを使用（RLSポリシーをバイパスするため）
+      const serviceRoleSupabase = getSupabaseServiceRole();
+      const { error: profileError } = await serviceRoleSupabase
         .from('monitor_profiles')
         .insert({
           user_id: data.user.id,
@@ -347,7 +349,6 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
         
         // プロフィール作成に失敗した場合、作成されたユーザーを削除して登録を失敗とする
         try {
-          const serviceRoleSupabase = getSupabaseServiceRole();
           await serviceRoleSupabase.auth.admin.deleteUser(data.user.id);
           console.log('プロフィール作成失敗のため、作成されたユーザーを削除しました:', data.user.id);
         } catch (deleteError) {
