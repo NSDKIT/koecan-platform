@@ -25,6 +25,7 @@ export type SurveyStatus = 'open' | 'closed' | 'scheduled';
 export interface Survey {
   id: string;
   title: string;
+  description?: string;
   category: SurveyCategory;
   rewardPoints: number;
   questions: number;

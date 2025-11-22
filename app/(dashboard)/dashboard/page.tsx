@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/config/supabase';
-import { Survey, Question, Answer, User, MonitorProfile, Advertisement, Response as UserResponse } from '@/types'; 
+import type { Survey, Question, Answer, MonitorProfile, Advertisement } from '@/lib/types'; 
 import { 
   Star, 
   Gift, 
@@ -144,10 +144,23 @@ export default function MonitorDashboard() {
       const pointsBalance = pointsData ? (pointsData as any).points_balance : 0;
       
       const combinedProfile: MonitorProfile = {
-          ...(profileData as any), 
-          points: pointsBalance, 
-          monitor_id: (profileData as any).id 
-      } as MonitorProfile;
+          id: (profileData as any).id || user.id,
+          name: (profileData as any).name || user.email?.split('@')[0] || 'ユーザー',
+          email: user.email || '',
+          university: (profileData as any).university || '',
+          occupation: (profileData as any).occupation || '',
+          age: (profileData as any).age || 0,
+          gender: (profileData as any).gender || '',
+          location: (profileData as any).location || '',
+          points: pointsBalance,
+          referralCode: (profileData as any).referral_code || '',
+          referralCount: (profileData as any).referral_count || 0,
+          referralPoints: (profileData as any).referral_points || 0,
+          isLineLinked: (profileData as any).is_line_linked || false,
+          pushOptIn: (profileData as any).push_opt_in || false,
+          tags: (profileData as any).tags || [],
+          updatedAt: (profileData as any).updated_at || new Date().toISOString()
+      };
 
       setProfile(combinedProfile);
 
@@ -156,14 +169,23 @@ export default function MonitorDashboard() {
     } catch (error) {
       console.error('プロフィール取得エラー:', error);
       setProfile({ 
-          id: user.id, 
-          user_id: user.id,
+          id: user.id,
+          name: user.email?.split('@')[0] || 'ユーザー',
+          email: user.email || '',
+          university: '',
+          occupation: '',
+          age: 0,
+          gender: '',
+          location: '',
           points: 0,
-          age: 0, 
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          monitor_id: user.id 
-      } as MonitorProfile); 
+          referralCode: '',
+          referralCount: 0,
+          referralPoints: 0,
+          isLineLinked: false,
+          pushOptIn: false,
+          tags: [],
+          updatedAt: new Date().toISOString()
+      }); 
       throw error;
     }
   };
@@ -303,11 +325,13 @@ export default function MonitorDashboard() {
 
   const handleSurveyClick = async (survey: Survey) => {
     try {
-      const { data: existingResponse } = await supabase
+      if (!user?.id) return;
+      
+      const { data: existingResponse } = await (supabase as any)
         .from('responses')
         .select('id')
         .eq('survey_id', survey.id)
-        .eq('monitor_id', user?.id)
+        .eq('monitor_id', user.id)
         .single();
 
       if (existingResponse) {
@@ -353,7 +377,7 @@ export default function MonitorDashboard() {
           return;
       }
 
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('responses')
         .insert([
           {
@@ -365,7 +389,7 @@ export default function MonitorDashboard() {
 
       if (error) throw error;
 
-      alert(`アンケートを送信しました！${selectedSurvey.points_reward}ポイントを獲得しました。`);
+      alert(`アンケートを送信しました！${(selectedSurvey as any).points_reward || selectedSurvey.rewardPoints}ポイントを獲得しました。`);
       setSelectedSurvey(null);
       setSurveyQuestions([]);
       setAnswers([]);
@@ -509,7 +533,7 @@ export default function MonitorDashboard() {
                 onClick={handleSurveySubmit}
                 className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
               >
-                送信する（{selectedSurvey.points_reward}ポイント獲得）
+                送信する（{(selectedSurvey as any).points_reward || selectedSurvey.rewardPoints}ポイント獲得）
               </button>
             </div>
           </div>
@@ -667,7 +691,7 @@ export default function MonitorDashboard() {
                           <div className="flex flex-col items-center md:items-end space-y-3 md:ml-6">
                             <div className="flex items-center bg-orange-50 rounded-full px-4 py-2 text-orange-700 font-semibold text-lg">
                               <Gift className="w-5 h-5 mr-2" />
-                              <span>{survey.points_reward}pt</span>
+                              <span>{(survey as any).points_reward || survey.rewardPoints}pt</span>
                             </div>
                             <button
                               onClick={() => handleSurveyClick(survey)}
@@ -718,7 +742,7 @@ export default function MonitorDashboard() {
                           <div className="flex flex-col items-center md:items-end space-y-3 md:ml-6">
                             <div className="flex items-center bg-gray-100 rounded-full px-4 py-2 text-gray-600 font-semibold text-lg">
                               <Gift className="w-5 h-5 mr-2" />
-                              <span>{survey.points_reward}pt 獲得済み</span>
+                              <span>{(survey as any).points_reward || survey.rewardPoints}pt 獲得済み</span>
                             </div>
                           </div>
                         </div>
