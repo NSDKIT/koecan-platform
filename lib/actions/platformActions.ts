@@ -304,6 +304,11 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
           serviceRoleSupabaseForUser = getSupabaseServiceRole();
           
           // Service Roleを使ってユーザーを作成（メール確認をスキップ）
+          console.log('Service Roleでユーザーを作成を開始:', {
+            email: payload.email,
+            hasPassword: !!payload.password
+          });
+          
           const { data: adminUserData, error: adminError } = await serviceRoleSupabaseForUser.auth.admin.createUser({
             email: payload.email,
             password: payload.password,
@@ -314,13 +319,48 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
             }
           });
           
-          if (!adminError && adminUserData?.user) {
-            createdUser = adminUserData.user;
-            console.log('Service Roleでユーザーを作成しました:', {
-              userId: createdUser.id,
-              email: adminUserData.user.email,
-              created_at: adminUserData.user.created_at
+          console.log('createUser結果:', {
+            hasError: !!adminError,
+            error: adminError?.message,
+            hasData: !!adminUserData,
+            hasUser: !!adminUserData?.user,
+            userId: adminUserData?.user?.id,
+            email: adminUserData?.user?.email
+          });
+          
+          if (adminError) {
+            console.error('Service Roleでのユーザー作成エラー:', {
+              message: adminError.message,
+              status: adminError.status,
+              name: adminError.name
             });
+            
+            // エラーの詳細をログに出力
+            if (adminError.message.includes('already registered') || adminError.message.includes('already exists')) {
+              return { 
+                success: false, 
+                message: 'このメールアドレスは既に登録されています。ログインページからログインしてください。' 
+              };
+            }
+            
+            throw adminError;
+          }
+          
+          if (!adminUserData?.user) {
+            console.error('createUserが成功したが、ユーザーデータが返されませんでした:', {
+              hasData: !!adminUserData,
+              adminUserDataKeys: adminUserData ? Object.keys(adminUserData) : []
+            });
+            throw new Error('ユーザーの作成に失敗しました。ユーザーデータが返されませんでした。');
+          }
+          
+          createdUser = adminUserData.user;
+          console.log('Service Roleでユーザーを作成しました:', {
+            userId: createdUser.id,
+            email: adminUserData.user.email,
+            created_at: adminUserData.user.created_at,
+            email_confirmed_at: adminUserData.user.email_confirmed_at
+          });
             
             // 外部キー制約エラーを回避するため、ユーザーが確実にauth.usersテーブルに
             // 保存されていることを確認（最大5回再試行、1000ms間隔）
