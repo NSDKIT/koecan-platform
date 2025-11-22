@@ -30,6 +30,12 @@
       ],
       "@/app/*": [
         "app/*"
+      ],
+      "@/hooks/*": [
+        "hooks/*"
+      ],
+      "@/config/*": [
+        "config/*"
       ]
     },
     "plugins": [
