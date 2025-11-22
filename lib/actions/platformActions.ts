@@ -401,8 +401,19 @@ export async function submitSurveyResponse(formData: FormData) {
   const userId = formData.get('userId')?.toString();
   const answersJson = formData.get('answers')?.toString();
 
+  // デバッグ用: 受け取ったデータを確認
+  console.log('submitSurveyResponse 受け取ったデータ:', {
+    surveyId,
+    userId,
+    hasAnswersJson: !!answersJson,
+    answersJsonLength: answersJson?.length
+  });
+
   if (!surveyId || !userId || !answersJson) {
-    return { success: false, message: '必要な情報が不足しています。' };
+    return { 
+      success: false, 
+      message: `必要な情報が不足しています。surveyId: ${surveyId ? 'あり' : 'なし'}, userId: ${userId ? 'あり' : 'なし'}, answersJson: ${answersJson ? 'あり' : 'なし'}` 
+    };
   }
 
   if (!isSupabaseConfigured()) {

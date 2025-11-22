@@ -57,10 +57,50 @@ export function SurveyAnswerForm({ survey, userId }: SurveyAnswerFormProps) {
     setIsSubmitting(true);
 
     try {
+      // デバッグ用: 送信前のデータを確認
+      console.log('送信前のデータ:', {
+        surveyId: survey.id,
+        userId,
+        answersCount: Object.keys(answers).length,
+        answers: Object.values(answers)
+      });
+
+      // すべての質問に対する回答を確認
+      const allAnswers = survey.questions.map(q => answers[q.id]).filter(Boolean);
+      
+      if (allAnswers.length !== survey.questions.length) {
+        const unansweredQuestions = survey.questions.filter(q => !answers[q.id]);
+        setError(`以下の質問に回答してください: ${unansweredQuestions.map(q => q.questionText).join(', ')}`);
+        setIsSubmitting(false);
+        return;
+      }
+
       const formData = new FormData();
       formData.append('surveyId', survey.id);
-      formData.append('userId', userId);
-      formData.append('answers', JSON.stringify(Object.values(answers)));
+      formData.append('userId', userId || '');
+      
+      // すべての質問に対して回答を準備
+      const answersArray = survey.questions.map(q => {
+        const answer = answers[q.id];
+        if (!answer) {
+          // 回答がない場合はデフォルト値を作成
+          return {
+            questionId: q.id,
+            answerText: q.questionType === 'text' ? '' : undefined,
+            answerNumber: (q.questionType === 'number' || q.questionType === 'rating') ? undefined : undefined,
+            selectedOptionIds: (q.questionType === 'single_choice' || q.questionType === 'multiple_choice') ? [] : undefined
+          };
+        }
+        return answer;
+      });
+      
+      formData.append('answers', JSON.stringify(answersArray));
+
+      console.log('送信するデータ:', {
+        surveyId: survey.id,
+        userId,
+        answersArray
+      });
 
       const result = await submitSurveyResponse(formData);
 
