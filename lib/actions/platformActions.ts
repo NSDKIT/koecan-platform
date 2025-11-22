@@ -241,13 +241,19 @@ export async function submitSurveyResponse(formData: FormData) {
 
     const supabase = getSupabaseServiceRole();
 
-    // 既に回答済みかチェック
-    const { data: existingResponse } = await supabase
-      .from('survey_responses')
-      .select('id')
-      .eq('survey_id', surveyId)
-      .eq('user_id', userId)
-      .single();
+    // 既に回答済みかチェック（テーブルが存在する場合）
+    let existingResponse: any = null;
+    try {
+      const result = await (supabase as any)
+        .from('survey_responses')
+        .select('id')
+        .eq('survey_id', surveyId)
+        .eq('user_id', userId)
+        .single();
+      existingResponse = result.data;
+    } catch (err) {
+      // テーブルが存在しない場合はスキップ
+    }
 
     if (existingResponse) {
       return { success: false, message: '既にこのアンケートに回答済みです。' };
@@ -276,22 +282,29 @@ export async function submitSurveyResponse(formData: FormData) {
     
     // survey_responsesテーブルに回答を保存（テーブルが存在する場合）
     // 現時点では、テーブルが存在しない可能性があるため、エラーハンドリングを追加
-    const { error: responseError } = await supabase
-      .from('survey_responses')
-      .insert({
-        id: responseId,
-        survey_id: surveyId,
-        user_id: userId,
-        submitted_at: new Date().toISOString()
-      });
+    let responseError: any = null;
+    try {
+      // 型定義に存在しないテーブルのため、型アサーションを使用
+      const { error } = await (supabase as any)
+        .from('survey_responses')
+        .insert({
+          id: responseId,
+          survey_id: surveyId,
+          user_id: userId,
+          submitted_at: new Date().toISOString()
+        });
+      responseError = error;
+    } catch (err) {
+      responseError = err;
+    }
 
-    if (responseError && !responseError.message.includes('does not exist')) {
+    if (responseError && !String(responseError).includes('does not exist')) {
       // テーブルが存在しない場合はスキップ（開発中のため）
       console.warn('survey_responsesテーブルへの保存に失敗:', responseError);
     }
 
     // survey_answersテーブルに個別回答を保存
-    if (!responseError || !responseError.message.includes('does not exist')) {
+    if (!responseError || String(responseError).includes('does not exist')) {
       const answerRecords = answers.map((answer) => {
         const record: any = {
           id: randomUUID(),
@@ -315,12 +328,16 @@ export async function submitSurveyResponse(formData: FormData) {
         return record;
       });
 
-      const { error: answersError } = await supabase
-        .from('survey_answers')
-        .insert(answerRecords);
+      try {
+        const { error: answersError } = await (supabase as any)
+          .from('survey_answers')
+          .insert(answerRecords);
 
-      if (answersError && !answersError.message.includes('does not exist')) {
-        console.warn('survey_answersテーブルへの保存に失敗:', answersError);
+        if (answersError && !String(answersError).includes('does not exist')) {
+          console.warn('survey_answersテーブルへの保存に失敗:', answersError);
+        }
+      } catch (err) {
+        console.warn('survey_answersテーブルへの保存に失敗:', err);
       }
     }
 
