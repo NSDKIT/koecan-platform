@@ -210,17 +210,18 @@ async function handleTestAccountLogin(
     
     if (error) {
       console.error('テストアカウントログインエラー:', error);
-      // Supabase未設定またはユーザー作成に失敗した場合は、直接リダイレクト
+      // Supabase未設定またはユーザー作成に失敗した場合は、直接リダイレクトURLを返す
       if (error.message.includes('Invalid login credentials') || error.message.includes('not found')) {
-        console.warn('認証情報が無効: 開発環境として直接リダイレクト');
-        redirectToRoleDashboard(testAccount.role);
-        return;
+        console.warn('認証情報が無効: 開発環境としてリダイレクトURLを返す');
+        const redirectUrl = getRoleDashboardUrl(testAccount.role);
+        return { success: true, redirectUrl };
       }
       return { success: false, message: `テストアカウントでログインできませんでした: ${error.message}` };
     }
     
-    redirectToRoleDashboard(testAccount.role);
-    return;
+    // リダイレクトURLを返す（クライアント側でリダイレクト）
+    const redirectUrl = getRoleDashboardUrl(testAccount.role);
+    return { success: true, redirectUrl };
   } catch (error) {
     console.error('テストアカウント処理エラー:', error);
     // エラーが発生した場合でも、開発環境としてリダイレクトを試行
