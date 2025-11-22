@@ -313,10 +313,54 @@ export async function fetchSurveyDetail(surveyId: string, userId?: string): Prom
       }
     }
 
+    // 質問データを取得（survey_questions テーブルが存在する場合）
+    let questions: any[] = [];
+    try {
+      const { data: questionData, error: questionError } = await (supabase as any)
+        .from('survey_questions')
+        .select('*, survey_question_options(*)')
+        .eq('survey_id', surveyId)
+        .order('display_order', { ascending: true });
+
+      if (!questionError && questionData) {
+        questions = questionData.map((q: any) => ({
+          id: q.id,
+          surveyId: surveyId,
+          questionText: q.question_text,
+          questionType: q.question_type,
+          isRequired: q.is_required,
+          displayOrder: q.display_order,
+          options: (q.survey_question_options || []).map((opt: any, index: number) => ({
+            id: opt.id,
+            optionText: opt.option_text,
+            displayOrder: opt.display_order || index
+          }))
+        }));
+      }
+    } catch (err) {
+      console.warn('質問データの取得に失敗（テーブルが存在しない可能性）:', err);
+      // テーブルが存在しない場合は空配列のまま
+    }
+
+    // 質問が存在しない場合はモック質問を追加（フォールバック）
+    if (questions.length === 0) {
+      questions = [
+        {
+          id: `q-${surveyId}-1`,
+          surveyId: surveyId,
+          questionText: 'このアンケートには質問が設定されていません。',
+          questionType: 'text' as QuestionType,
+          isRequired: false,
+          displayOrder: 1,
+          options: []
+        }
+      ];
+    }
+
     return {
       ...survey,
       description: (surveyData as any).description || '',
-      questions: [], // TODO: survey_questions テーブルから取得
+      questions,
       hasAnswered
     };
   } catch (error) {
