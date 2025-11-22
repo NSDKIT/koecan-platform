@@ -91,44 +91,58 @@ const fallbackAdmin: AdminDashboardData = {
 
 export async function fetchMonitorDashboardData(userId?: string): Promise<MonitorDashboardData> {
   if (!isSupabaseConfigured() || !userId) {
+    console.warn('Supabase未設定またはuserIdが未指定。モックデータを返します。', { userId, isConfigured: isSupabaseConfigured() });
     return fallbackMonitor;
   }
 
   try {
     const supabase = getSupabaseServiceRole();
-    const [profileRes, surveyRes, pointRes, rewardsRes, announcementRes, faqRes, careerRes, supportRes, referralRes, policyRes] =
+    
+    // まずプロフィールを取得（必須）
+    const profileRes = await supabase.from('monitor_profiles').select('*').eq('user_id', userId).single();
+    
+    if (profileRes.error || !profileRes.data) {
+      console.error('プロフィール取得エラー:', profileRes.error || 'データが見つかりません');
+      // プロフィールが取得できない場合は、モックデータを返す
+      return fallbackMonitor;
+    }
+
+    console.log('プロフィールデータ取得成功:', {
+      userId,
+      profileName: profileRes.data.name,
+      profileEmail: profileRes.data.email,
+      referralCode: profileRes.data.referral_code
+    });
+
+    // プロフィールが取得できたので、他のデータも取得（エラーがあっても続行）
+    const [surveyRes, pointRes, rewardsRes, announcementRes, faqRes, careerRes, supportRes, referralRes, policyRes] =
       await Promise.all([
-        supabase.from('monitor_profiles').select('*').eq('user_id', userId).single(),
         supabase.from('surveys').select('*').order('ai_matching_score', { ascending: false }).limit(20),
-        supabase.from('point_transactions').select('*').eq('user_id', userId).order('happened_at', { ascending: false }).limit(10),
+        supabase.from('point_history').select('*').eq('user_id', userId).order('happened_at', { ascending: false }).limit(10),
         supabase.from('reward_items').select('*').order('points_required'),
         supabase.from('announcements').select('*').order('published_at', { ascending: false }).limit(10),
-        supabase.from('faq_items').select('*').order('updated_at', { ascending: false }).limit(10),
+        supabase.from('faqs').select('*').order('updated_at', { ascending: false }).limit(10),
         supabase.from('career_slots').select('*').order('starts_at'),
-        supabase.from('support_tickets').select('*').order('created_at', { ascending: false }).limit(10),
-        supabase.from('referral_statuses').select('*').eq('user_id', userId).single(),
+        supabase.from('chat_messages').select('*').order('created_at', { ascending: false }).limit(10),
+        supabase.from('referral_codes').select('*').eq('user_id', userId).single(),
         supabase.from('policy_documents').select('*').order('updated_at', { ascending: false })
       ]);
 
-    const erroredBucket = [
-      profileRes,
-      surveyRes,
-      pointRes,
-      rewardsRes,
-      announcementRes,
-      faqRes,
-      careerRes,
-      supportRes,
-      referralRes,
-      policyRes
-    ].find((res) => res.error);
-
-    if (erroredBucket) {
-      throw erroredBucket.error;
-    }
-
-    if (!profileRes.data || !referralRes.data) {
-      throw new Error('Missing required monitor profile data');
+    // プロフィールから紹介コードを取得（referral_statusesが取得できない場合のフォールバック）
+    const referralCode = profileRes.data.referral_code || '';
+    let referralStatus;
+    if (referralRes.data && !referralRes.error) {
+      referralStatus = mapReferral(referralRes.data);
+    } else {
+      // プロフィールから紹介コードを使用してステータスを作成
+      referralStatus = {
+        code: referralCode,
+        totalReferrals: profileRes.data.referral_count || 0,
+        successfulReferrals: 0,
+        pendingReferrals: 0,
+        rewardPoints: profileRes.data.referral_points || 0,
+        lastUpdated: new Date().toISOString()
+      };
     }
 
     return {
@@ -140,11 +154,11 @@ export async function fetchMonitorDashboardData(userId?: string): Promise<Monito
       faqItems: (faqRes.data ?? []).map(mapFaq),
       careerSlots: (careerRes.data ?? []).map(mapCareerSlot),
       supportTickets: (supportRes.data ?? []).map(mapSupportTicket),
-      referralStatus: mapReferral(referralRes.data),
+      referralStatus,
       policyDocuments: (policyRes.data ?? []).map(mapPolicyDocument)
     };
   } catch (error) {
-    console.warn('Supabase fetch failed. Falling back to mock data.', error);
+    console.error('Supabase fetch failed. Falling back to mock data.', error);
     return fallbackMonitor;
   }
 }
