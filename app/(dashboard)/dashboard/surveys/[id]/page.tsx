@@ -51,7 +51,7 @@ export default async function SurveyDetailPage({ params }: SurveyDetailPageProps
       <div className="container" style={{ display: 'grid', gap: '1.5rem' }}>
         <Section
           title={survey.title}
-          subtitle={`${formatDate(survey.deadline)} まで / ${survey.rewardPoints}pt / ${survey.questions.length}問`}
+          subtitle={`${formatDate(survey.deadline)} まで / ${survey.rewardPoints}pt / ${survey.questions?.length || 0}問`}
           action={
             <Link href="/dashboard" className="button ghost" style={{ textDecoration: 'none' }}>
               ← 一覧に戻る
@@ -70,12 +70,21 @@ export default async function SurveyDetailPage({ params }: SurveyDetailPageProps
               <StatusPill text={survey.status === 'open' ? '公開中' : survey.status === 'closed' ? '終了' : '予約'} variant={survey.status === 'open' ? 'success' : survey.status === 'closed' ? 'danger' : 'pending'} />
               <span className="badge info">{survey.category}</span>
               <span className="badge warning">{survey.rewardPoints}pt</span>
-              <span className="badge">{survey.questions.length}問</span>
+              <span className="badge">{survey.questions?.length || 0}問</span>
             </div>
 
             <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1.5rem' }}>
               <h4 style={{ marginBottom: '1rem' }}>回答フォーム</h4>
-              <SurveyAnswerForm survey={survey} userId={userId || ''} />
+              {survey.questions && survey.questions.length > 0 ? (
+                <SurveyAnswerForm survey={survey} userId={userId || ''} />
+              ) : (
+                <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                  <p>このアンケートには質問が設定されていません。</p>
+                  <p style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>
+                    質問データはデータベースに保存されていない可能性があります。
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </Section>
