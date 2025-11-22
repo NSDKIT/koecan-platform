@@ -296,18 +296,23 @@ export async function fetchSurveyDetail(surveyId: string, userId?: string): Prom
     // 回答済みかどうかをチェック
     let hasAnswered = false;
     if (userId) {
-      const { data: responseData } = await supabase
-        .from('survey_responses')
-        .select('id')
-        .eq('survey_id', surveyId)
-        .eq('user_id', userId)
-        .single();
-      hasAnswered = !!responseData;
+      try {
+        const { data: responseData } = await (supabase as any)
+          .from('survey_responses')
+          .select('id')
+          .eq('survey_id', surveyId)
+          .eq('user_id', userId)
+          .single();
+        hasAnswered = !!responseData;
+      } catch (err) {
+        // テーブルが存在しない場合は未回答として扱う
+        hasAnswered = false;
+      }
     }
 
     return {
       ...survey,
-      description: surveyData.description || '',
+      description: (surveyData as any).description || '',
       questions: [], // TODO: survey_questions テーブルから取得
       hasAnswered
     };
