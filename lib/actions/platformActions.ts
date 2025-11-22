@@ -425,54 +425,35 @@ export async function registerAction(formData: FormData): Promise<{ success: boo
         };
       }
       
+      // Service Roleを使用してプロフィールを作成（RLSポリシーをバイパス）
+      // Service Roleでユーザーを作成した場合は既に使用済み、そうでない場合は新規取得
+      if (!serviceRoleSupabaseForUser && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        try {
+          serviceRoleSupabase = getSupabaseServiceRole();
+        } catch (serviceRoleError) {
+          console.error('Service Role取得エラー:', serviceRoleError);
+          return { 
+            success: false, 
+            message: '登録に失敗しました。プロフィールの保存に失敗しました。SUPABASE_SERVICE_ROLE_KEYの設定が必要です。Supabase Dashboardの「Settings」→「API」からService Role Keyを取得して、環境変数に設定してください。' 
+          };
+        }
+      } else {
+        serviceRoleSupabase = serviceRoleSupabaseForUser;
+      }
+      
+      if (!serviceRoleSupabase) {
+        return { 
+          success: false, 
+          message: '登録に失敗しました。プロフィールの保存に失敗しました。SUPABASE_SERVICE_ROLE_KEYの設定が必要です。Supabase Dashboardの「Settings」→「API」からService Role Keyを取得して、環境変数に設定してください。' 
+        };
+      }
+      
       try {
         // Service Roleを使用してプロフィールを作成（RLSポリシーをバイパス）
-        serviceRoleSupabase = getSupabaseServiceRole();
-        
-        // 外部キー制約のため、auth.usersテーブルにユーザーが確実に存在することを確認
-        // ユーザー作成後、少し待ってからプロフィールを作成（トランザクションの確実性のため）
-        let retryCount = 0;
-        const maxRetries = 5;
-        
-        while (retryCount < maxRetries) {
-          // ユーザーがauth.usersテーブルに存在することを確認
-          const { data: authUser, error: authCheckError } = await serviceRoleSupabase.auth.admin.getUserById(data.user.id);
-          
-          if (authCheckError || !authUser?.user) {
-            console.warn(`ユーザー確認失敗 (試行 ${retryCount + 1}/${maxRetries}):`, authCheckError);
-            if (retryCount < maxRetries - 1) {
-              // 少し待ってから再試行（500ms待機）
-              await new Promise(resolve => setTimeout(resolve, 500));
-              retryCount++;
-              continue;
-            } else {
-              throw new Error('ユーザーがauth.usersテーブルに作成されていません。');
-            }
-          }
-          
-          // ユーザーが存在することを確認できたので、プロフィールを作成
-          profileInsertResult = await serviceRoleSupabase
-            .from('monitor_profiles')
-            .insert(profileData as any);
-          
-          // プロフィール作成が成功した場合、ループを抜ける
-          if (!profileInsertResult.error) {
-            break;
-          }
-          
-          // 外部キー制約エラーの場合、少し待ってから再試行
-          if (profileInsertResult.error.message?.includes('foreign key constraint')) {
-            console.warn(`外部キー制約エラー (試行 ${retryCount + 1}/${maxRetries}):`, profileInsertResult.error);
-            if (retryCount < maxRetries - 1) {
-              await new Promise(resolve => setTimeout(resolve, 500));
-              retryCount++;
-              continue;
-            }
-          }
-          
-          // その他のエラーは再試行しない
-          break;
-        }
+        // Service Roleでユーザーを作成した場合は既にauth.usersテーブルに存在するはず
+        profileInsertResult = await serviceRoleSupabase
+          .from('monitor_profiles')
+          .insert(profileData as any);
       } catch (serviceRoleError) {
         console.error('Service Roleを使用したプロフィール作成エラー:', serviceRoleError);
         
