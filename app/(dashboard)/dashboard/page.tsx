@@ -43,6 +43,7 @@ export default async function DashboardPage() {
                   <th>締切</th>
                   <th>AIマッチ度</th>
                   <th>配信</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -59,6 +60,11 @@ export default async function DashboardPage() {
                     <td>{formatDate(survey.deadline)}</td>
                     <td>{Math.round(survey.aiMatchingScore * 100)}%</td>
                     <td>{survey.deliveryChannels.join(', ')}</td>
+                    <td>
+                      <Link href={`/dashboard/surveys/${survey.id}`} className="button primary" style={{ fontSize: '0.875rem', textDecoration: 'none' }}>
+                        回答する
+                      </Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>
