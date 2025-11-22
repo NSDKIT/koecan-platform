@@ -129,3 +129,34 @@ export interface PolicyDocument {
   updatedAt: string;
   url: string;
 }
+
+export type QuestionType = 'single_choice' | 'multiple_choice' | 'text' | 'number' | 'rating' | 'ranking';
+
+export interface SurveyQuestionOption {
+  id: string;
+  optionText: string;
+  displayOrder: number;
+}
+
+export interface SurveyQuestion {
+  id: string;
+  surveyId: string;
+  questionText: string;
+  questionType: QuestionType;
+  isRequired: boolean;
+  displayOrder: number;
+  options: SurveyQuestionOption[];
+}
+
+export interface SurveyDetail extends Survey {
+  description?: string;
+  questions: SurveyQuestion[];
+  hasAnswered: boolean;
+}
+
+export interface SurveyAnswer {
+  questionId: string;
+  answerText?: string;
+  answerNumber?: number;
+  selectedOptionIds?: string[];
+}

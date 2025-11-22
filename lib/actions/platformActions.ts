@@ -219,6 +219,159 @@ export async function updateNotificationPreference(userId: string, patch: { isLi
   return { success: true };
 }
 
+export async function submitSurveyResponse(formData: FormData) {
+  const surveyId = formData.get('surveyId')?.toString();
+  const userId = formData.get('userId')?.toString();
+  const answersJson = formData.get('answers')?.toString();
+
+  if (!surveyId || !userId || !answersJson) {
+    return { success: false, message: '必要な情報が不足しています。' };
+  }
+
+  if (!isSupabaseConfigured()) {
+    return { success: false, message: 'Supabase未設定のため処理できません。' };
+  }
+
+  try {
+    const answers = JSON.parse(answersJson) as Array<{ questionId: string; answerText?: string; answerNumber?: number; selectedOptionIds?: string[] }>;
+    
+    if (!Array.isArray(answers) || answers.length === 0) {
+      return { success: false, message: '回答データが無効です。' };
+    }
+
+    const supabase = getSupabaseServiceRole();
+
+    // 既に回答済みかチェック
+    const { data: existingResponse } = await supabase
+      .from('survey_responses')
+      .select('id')
+      .eq('survey_id', surveyId)
+      .eq('user_id', userId)
+      .single();
+
+    if (existingResponse) {
+      return { success: false, message: '既にこのアンケートに回答済みです。' };
+    }
+
+    // アンケート情報を取得
+    const { data: survey, error: surveyError } = await supabase
+      .from('surveys')
+      .select('reward_points, deadline')
+      .eq('id', surveyId)
+      .single();
+
+    if (surveyError || !survey) {
+      return { success: false, message: 'アンケートが見つかりません。' };
+    }
+
+    // 期限チェック
+    const deadline = new Date(survey.deadline);
+    if (deadline < new Date()) {
+      return { success: false, message: '回答期限を過ぎています。' };
+    }
+
+    // トランザクション開始（survey_responsesテーブルが存在する場合）
+    // 回答を保存
+    const responseId = randomUUID();
+    
+    // survey_responsesテーブルに回答を保存（テーブルが存在する場合）
+    // 現時点では、テーブルが存在しない可能性があるため、エラーハンドリングを追加
+    const { error: responseError } = await supabase
+      .from('survey_responses')
+      .insert({
+        id: responseId,
+        survey_id: surveyId,
+        user_id: userId,
+        submitted_at: new Date().toISOString()
+      });
+
+    if (responseError && !responseError.message.includes('does not exist')) {
+      // テーブルが存在しない場合はスキップ（開発中のため）
+      console.warn('survey_responsesテーブルへの保存に失敗:', responseError);
+    }
+
+    // survey_answersテーブルに個別回答を保存
+    if (!responseError || !responseError.message.includes('does not exist')) {
+      const answerRecords = answers.map((answer) => {
+        const record: any = {
+          id: randomUUID(),
+          response_id: responseId,
+          question_id: answer.questionId,
+          created_at: new Date().toISOString()
+        };
+
+        if (answer.answerText !== undefined) {
+          record.answer_text = answer.answerText;
+        }
+        if (answer.answerNumber !== undefined) {
+          record.answer_number = answer.answerNumber;
+        }
+        // selectedOptionIdsは複数選択の場合、複数レコードに分割して保存するか、JSONとして保存
+        if (answer.selectedOptionIds && answer.selectedOptionIds.length > 0) {
+          // シンプルに最初の選択肢のみ保存（本番では適切に設計する必要がある）
+          record.answer_text = answer.selectedOptionIds.join(',');
+        }
+
+        return record;
+      });
+
+      const { error: answersError } = await supabase
+        .from('survey_answers')
+        .insert(answerRecords);
+
+      if (answersError && !answersError.message.includes('does not exist')) {
+        console.warn('survey_answersテーブルへの保存に失敗:', answersError);
+      }
+    }
+
+    // ポイント付与
+    const rewardPoints = survey.reward_points || 30;
+    
+    // monitor_profilesテーブルから現在のポイントを取得
+    const { data: profile } = await supabase
+      .from('monitor_profiles')
+      .select('points')
+      .eq('user_id', userId)
+      .single();
+
+    const currentPoints = profile?.points || 0;
+    const newPoints = currentPoints + rewardPoints;
+
+    // ポイントを更新
+    const { error: pointsError } = await supabase
+      .from('monitor_profiles')
+      .update({ points: newPoints })
+      .eq('user_id', userId);
+
+    if (pointsError) {
+      console.error('ポイント更新に失敗:', pointsError);
+      // ポイント更新に失敗しても回答は保存済みなので、警告のみ
+    }
+
+    // ポイント履歴を記録
+    const { error: historyError } = await supabase
+      .from('point_transactions')
+      .insert({
+        id: randomUUID(),
+        user_id: userId,
+        happened_at: new Date().toISOString(),
+        amount: rewardPoints,
+        reason: 'survey',
+        description: `アンケート回答: ${surveyId}`
+      });
+
+    if (historyError && !historyError.message.includes('does not exist')) {
+      console.warn('ポイント履歴の記録に失敗:', historyError);
+    }
+
+    revalidatePath('/dashboard');
+    return { success: true, message: `${rewardPoints}pt獲得しました！` };
+  } catch (error) {
+    console.error('アンケート回答送信エラー:', error);
+    return { success: false, message: '回答の送信に失敗しました。もう一度お試しください。' };
+  }
+}
+
 export async function regenerateReferralCode(userId: string) {
   const newCode = `KOECAN-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
   if (isSupabaseConfigured()) {

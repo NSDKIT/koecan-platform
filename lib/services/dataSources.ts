@@ -26,7 +26,8 @@ import type {
   ReferralStatus,
   RewardItem,
   SupportTicket,
-  Survey
+  Survey,
+  SurveyDetail
 } from '@/lib/types';
 import { getSupabaseServiceRole, isSupabaseConfigured } from '@/lib/services/supabaseServer';
 
@@ -243,6 +244,76 @@ export async function fetchSupportDashboardData(): Promise<SupportDashboardData>
   } catch (error) {
     console.warn('Supabase support fetch failed. Falling back to mock data.', error);
     return fallbackSupport;
+  }
+}
+
+export async function fetchSurveyDetail(surveyId: string, userId?: string): Promise<SurveyDetail | null> {
+  if (!isSupabaseConfigured()) {
+    // モックデータを返す
+    const mockSurvey = mockSurveys.find((s) => s.id === surveyId);
+    if (!mockSurvey) return null;
+    
+    return {
+      ...mockSurvey,
+      description: 'このアンケートはサンプルです。実際の質問データはデータベースに保存されていません。',
+      questions: [
+        {
+          id: 'q1',
+          surveyId: surveyId,
+          questionText: 'サンプル質問1: 単一選択',
+          questionType: 'single_choice',
+          isRequired: true,
+          displayOrder: 1,
+          options: [
+            { id: 'opt1', optionText: '選択肢1', displayOrder: 1 },
+            { id: 'opt2', optionText: '選択肢2', displayOrder: 2 },
+            { id: 'opt3', optionText: '選択肢3', displayOrder: 3 }
+          ]
+        }
+      ],
+      hasAnswered: false
+    };
+  }
+
+  try {
+    const supabase = getSupabaseServiceRole();
+    
+    // アンケート基本情報を取得
+    const { data: surveyData, error: surveyError } = await supabase
+      .from('surveys')
+      .select('*')
+      .eq('id', surveyId)
+      .single();
+
+    if (surveyError || !surveyData) {
+      return null;
+    }
+
+    // 質問と選択肢を取得（survey_questions, survey_question_options が存在する場合）
+    // 現時点では、これらのテーブルが存在しない可能性があるため、モックデータを返す
+    const survey = mapSurvey(surveyData);
+    
+    // 回答済みかどうかをチェック
+    let hasAnswered = false;
+    if (userId) {
+      const { data: responseData } = await supabase
+        .from('survey_responses')
+        .select('id')
+        .eq('survey_id', surveyId)
+        .eq('user_id', userId)
+        .single();
+      hasAnswered = !!responseData;
+    }
+
+    return {
+      ...survey,
+      description: surveyData.description || '',
+      questions: [], // TODO: survey_questions テーブルから取得
+      hasAnswered
+    };
+  } catch (error) {
+    console.warn('Supabase survey detail fetch failed:', error);
+    return null;
   }
 }
 

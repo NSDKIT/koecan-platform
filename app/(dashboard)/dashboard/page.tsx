@@ -1,5 +1,6 @@
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import Link from 'next/link';
 import { Section } from '@/components/Section';
 import { MetricCard } from '@/components/MetricCard';
 import { ReferralCodeCard } from '@/components/ReferralCodeCard';
@@ -47,7 +48,11 @@ export default async function DashboardPage() {
               <tbody>
                 {data.surveys.map((survey) => (
                   <tr key={survey.id}>
-                    <td>{survey.title}</td>
+                    <td>
+                      <Link href={`/dashboard/surveys/${survey.id}`} style={{ color: '#3b82f6', textDecoration: 'underline' }}>
+                        {survey.title}
+                      </Link>
+                    </td>
                     <td>{survey.category}</td>
                     <td>{survey.rewardPoints} pt</td>
                     <td>{survey.questions}</td>
