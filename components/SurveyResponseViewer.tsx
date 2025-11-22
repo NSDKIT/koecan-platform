@@ -2,8 +2,6 @@
 
 import { useState } from 'react';
 import type { SurveyDetail, SurveyResponseData } from '@/lib/services/dataSources';
-import { exportSurveyResponsesCsv, exportSurveyResponsesExcel } from '@/lib/actions/platformActions';
-
 interface SurveyResponseViewerProps {
   survey: SurveyDetail;
   responses: SurveyResponseData;
@@ -12,14 +10,41 @@ interface SurveyResponseViewerProps {
 export function SurveyResponseViewer({ survey, responses }: SurveyResponseViewerProps) {
   const [isExporting, setIsExporting] = useState(false);
 
-  const handleExportCsv = async () => {
+  const handleExportCsv = () => {
     setIsExporting(true);
     try {
-      const formData = new FormData();
-      formData.append('surveyId', survey.id);
-      formData.append('responses', JSON.stringify(responses.responses));
+      // CSV形式でデータを整形
+      let csvContent = '回答ID,回答日時';
+      
+      // 質問列を追加
+      if (responses.responses.length > 0 && responses.responses[0].answers.length > 0) {
+        responses.responses[0].answers.forEach((answer) => {
+          csvContent += `,"${answer.questionText.replace(/"/g, '""')}"`;
+        });
+      }
+      csvContent += '\n';
 
-      await exportSurveyResponsesCsv(formData);
+      // 回答データを追加
+      responses.responses.forEach((response) => {
+        csvContent += `"${response.id}","${new Date(response.submittedAt).toLocaleString('ja-JP')}"`;
+        response.answers.forEach((answer) => {
+          const value = answer.answerText || answer.answerNumber?.toString() || '';
+          csvContent += `,"${value.replace(/"/g, '""')}"`;
+        });
+        csvContent += '\n';
+      });
+
+      // BOM付きUTF-8でエンコード
+      const BOM = '\uFEFF';
+      const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `survey_responses_${survey.id.substring(0, 8)}_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
     } catch (err) {
       console.error('CSVエクスポートエラー:', err);
     } finally {
@@ -27,19 +52,9 @@ export function SurveyResponseViewer({ survey, responses }: SurveyResponseViewer
     }
   };
 
-  const handleExportExcel = async () => {
-    setIsExporting(true);
-    try {
-      const formData = new FormData();
-      formData.append('surveyId', survey.id);
-      formData.append('responses', JSON.stringify(responses.responses));
-
-      await exportSurveyResponsesExcel(formData);
-    } catch (err) {
-      console.error('Excelエクスポートエラー:', err);
-    } finally {
-      setIsExporting(false);
-    }
+  const handleExportExcel = () => {
+    // Excel形式のエクスポートは、CSVとして実装（実際のExcel形式にはライブラリが必要）
+    handleExportCsv();
   };
 
   if (responses.totalResponses === 0) {
