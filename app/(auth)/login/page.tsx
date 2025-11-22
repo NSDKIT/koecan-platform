@@ -25,25 +25,67 @@ export default function LoginPage() {
 
     startTransition(async () => {
       try {
-        // サーバー側でログイン処理を実行（セッションをクッキーに保存）
-        const result = await loginAction(formData);
+        // クライアント側でログインを実行（セッションをlocalStorageに保存）
+        const { getBrowserSupabase } = await import('@/lib/supabaseClient');
+        const supabase = getBrowserSupabase();
         
-        console.log('ログイン結果:', result);
+        console.log('クライアント側でログインを試行します:', { email });
         
-        if (result && !result.success) {
-          const errorMessage = result.message || 'ログインに失敗しました';
-          console.error('ログイン失敗:', errorMessage);
-          setError(errorMessage);
+        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+        
+        if (loginError) {
+          console.error('クライアント側ログインエラー:', loginError);
+          // サーバー側のログイン処理にフォールバック（テストアカウントなど）
+          const result = await loginAction(formData);
+          
+          if (result && !result.success) {
+            const errorMessage = result.message || 'ログインに失敗しました';
+            setError(errorMessage);
+            return;
+          }
+          
+          // サーバー側でログインが成功した場合、クライアント側でもログインを試行
+          // サーバー側のセッションがクッキーに保存されているので、
+          // クライアント側でも同じ認証情報でログインしてlocalStorageにセッションを保存
+          const { error: retryError } = await supabase.auth.signInWithPassword({
+            email,
+            password
+          });
+          
+          if (retryError) {
+            console.error('クライアント側再ログインエラー:', retryError);
+            // エラーがあってもリダイレクトを続行（サーバー側では成功している）
+          }
+          
+          const redirectUrl = result?.redirectUrl || '/dashboard';
+          console.log('ログイン成功（サーバー側経由）。リダイレクト先:', redirectUrl);
+          window.location.href = redirectUrl;
           return;
         }
         
-        // リダイレクトURLを取得（デフォルトは/dashboard）
+        if (!loginData?.session) {
+          console.error('クライアント側ログインが成功したが、セッションが取得できませんでした');
+          setError('ログインに失敗しました。セッションを確立できませんでした。');
+          return;
+        }
+        
+        console.log('クライアント側ログイン成功:', {
+          userId: loginData.session.user.id,
+          email: loginData.session.user.email
+        });
+        
+        // サーバー側でもログイン処理を実行（ロール取得とリダイレクトURL決定のため）
+        const result = await loginAction(formData);
+        
+        // リダイレクトURLを取得（サーバー側の結果から、またはデフォルト）
         const redirectUrl = result?.redirectUrl || '/dashboard';
         
         console.log('ログイン成功。リダイレクト先:', redirectUrl);
         
-        // サーバー側でログインが成功し、セッションがクッキーに保存されている
-        // ページ全体をリロードしてセッションを確実に反映
+        // クライアント側でセッションが確立されているので、リダイレクト
         window.location.href = redirectUrl;
       } catch (err) {
         console.error('ログインエラー:', err);
