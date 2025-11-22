@@ -25,67 +25,51 @@ export default function LoginPage() {
 
     startTransition(async () => {
       try {
+        // クライアント側でログインを試行（セッションを確立）
+        console.log('クライアント側でログインを試行します:', { email });
+        const { getBrowserSupabase } = await import('@/lib/supabaseClient');
+        const supabase = getBrowserSupabase();
+        
+        const { data: clientLoginData, error: clientLoginError } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+        
+        if (clientLoginError) {
+          console.error('クライアント側ログインエラー:', clientLoginError);
+          setError('ログインに失敗しました。メールアドレスとパスワードを確認してください。');
+          return;
+        }
+        
+        if (!clientLoginData?.session) {
+          console.error('クライアント側ログインが成功したが、セッションが取得できませんでした');
+          setError('ログインに失敗しました。セッションを確立できませんでした。');
+          return;
+        }
+        
+        console.log('クライアント側ログイン成功:', {
+          userId: clientLoginData.session.user.id,
+          email: clientLoginData.session.user.email
+        });
+        
+        // サーバー側でもログイン処理を実行（ロール取得とリダイレクトURL決定のため）
         const result = await loginAction(formData);
         
-        console.log('ログイン結果:', result);
-        
-        if (result) {
-          console.log('ログイン結果:', result);
-          
-          if (!result.success) {
-            const errorMessage = result.message || 'ログインに失敗しました';
-            console.error('ログイン失敗:', errorMessage);
-            setError(errorMessage);
-            return;
-          }
-          
-          // リダイレクトURLを取得（デフォルトは/dashboard）
-          const redirectUrl = result.redirectUrl || '/dashboard';
-          
-          console.log('ログイン成功。リダイレクト先:', redirectUrl);
-          
-          // サーバー側でログインが成功したが、クライアント側でセッションを確立する必要がある
-          // 既に取得したemailとpasswordを使用して、クライアント側でログイン
-          if (email && password) {
-            console.log('クライアント側でログインを試行します:', { email });
-            const { getBrowserSupabase } = await import('@/lib/supabaseClient');
-            const supabase = getBrowserSupabase();
-            
-            try {
-              // クライアント側でログインしてセッションを確立
-              const { data: clientLoginData, error: clientLoginError } = await supabase.auth.signInWithPassword({
-                email,
-                password
-              });
-              
-              if (clientLoginError) {
-                console.error('クライアント側ログインエラー:', clientLoginError);
-                // エラーが発生しても、サーバー側でログインは成功しているのでリダイレクト
-              } else if (clientLoginData?.session) {
-                console.log('クライアント側ログイン成功:', {
-                  userId: clientLoginData.session.user.id,
-                  email: clientLoginData.session.user.email
-                });
-              }
-            } catch (clientLoginException) {
-              console.error('クライアント側ログインで例外が発生:', clientLoginException);
-              // 例外が発生しても、サーバー側でログインは成功しているのでリダイレクト
-            }
-          } else {
-            console.warn('メールアドレスまたはパスワードが取得できませんでした。サーバー側のセッションに依存します。');
-          }
-          
-          // セッションが確立されるまで少し待ってからリダイレクト
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          // ページ全体をリロードしてセッションを確実に反映
-          window.location.href = redirectUrl;
-        } else {
-          // resultがundefinedの場合もダッシュボードにリダイレクト
-          console.warn('ログイン結果がundefinedのため、デフォルトでダッシュボードにリダイレクト');
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          window.location.href = '/dashboard';
+        if (result && !result.success) {
+          // サーバー側でエラーが発生した場合でも、クライアント側でログインは成功している
+          console.warn('サーバー側ログインでエラー:', result.message);
+          // リダイレクトは続行
         }
+        
+        // リダイレクトURLを取得（サーバー側の結果から、またはデフォルト）
+        const redirectUrl = result?.redirectUrl || '/dashboard';
+        
+        console.log('ログイン成功。リダイレクト先:', redirectUrl);
+        
+        // セッションが確立されたので、リダイレクト
+        // Next.jsのルーターを使用（クライアント側のセッションが確立されているので）
+        router.push(redirectUrl);
+        router.refresh();
       } catch (err) {
         console.error('ログインエラー:', err);
         setError('ログイン処理中にエラーが発生しました');
