@@ -1,8 +1,10 @@
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import Link from 'next/link';
 import { Section } from '@/components/Section';
 import { MetricCard } from '@/components/MetricCard';
 import { StatusPill } from '@/components/StatusPill';
+import { ClientDashboardActions } from '@/components/ClientDashboardActions';
 import { fetchClientDashboardData } from '@/lib/services/dataSources';
 import { clientForServerComponent } from '@/lib/services/supabaseAuth';
 
@@ -35,9 +37,9 @@ export default async function ClientPage() {
           <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h4 style={{ margin: 0 }}>アンケート一覧</h4>
-              <button className="button primary" type="button">
+              <Link href="/client/surveys/create" className="button primary" style={{ textDecoration: 'none' }}>
                 新規アンケート作成
-              </button>
+              </Link>
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table className="table">
@@ -56,7 +58,11 @@ export default async function ClientPage() {
                 <tbody>
                   {data.surveys.map((survey) => (
                     <tr key={survey.id}>
-                      <td>{survey.title}</td>
+                      <td>
+                        <Link href={`/client/surveys/${survey.id}`} style={{ color: '#3b82f6', textDecoration: 'underline' }}>
+                          {survey.title}
+                        </Link>
+                      </td>
                       <td>{survey.category}</td>
                       <td>{survey.rewardPoints} pt</td>
                       <td>{survey.questions}問</td>
@@ -70,12 +76,12 @@ export default async function ClientPage() {
                       <td>0件</td>
                       <td>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button className="button ghost" type="button" style={{ fontSize: '0.875rem' }}>
+                          <Link href={`/client/surveys/${survey.id}/edit`} className="button ghost" style={{ fontSize: '0.875rem', textDecoration: 'none' }}>
                             編集
-                          </button>
-                          <button className="button ghost" type="button" style={{ fontSize: '0.875rem' }}>
+                          </Link>
+                          <Link href={`/client/surveys/${survey.id}/responses`} className="button ghost" style={{ fontSize: '0.875rem', textDecoration: 'none' }}>
                             回答データ
-                          </button>
+                          </Link>
                         </div>
                       </td>
                     </tr>
@@ -87,27 +93,7 @@ export default async function ClientPage() {
         </Section>
 
         <Section title="アンケート作成" subtitle="手動作成 / Markdownインポート / CSVインポート">
-          <div className="two-column">
-            <div className="card">
-              <h4>手動作成</h4>
-              <p>質問を1つずつ追加してアンケートを作成します。</p>
-              <Link href="/client/surveys/create" className="button primary" style={{ width: '100%', marginTop: '1rem', textDecoration: 'none', display: 'block', textAlign: 'center' }}>
-                手動で作成する
-              </Link>
-            </div>
-            <div className="card">
-              <h4>一括インポート</h4>
-              <p>MarkdownまたはCSVファイルから一括でアンケートを作成します。</p>
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-                <button className="button secondary" type="button" style={{ flex: 1 }}>
-                  Markdown
-                </button>
-                <button className="button secondary" type="button" style={{ flex: 1 }}>
-                  CSV
-                </button>
-              </div>
-            </div>
-          </div>
+          <ClientDashboardActions userId={userId || ''} />
         </Section>
 
         <Section title="回答データ管理" subtitle="集計・エクスポート">
@@ -128,4 +114,3 @@ export default async function ClientPage() {
     </main>
   );
 }
-

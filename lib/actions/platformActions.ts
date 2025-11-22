@@ -497,6 +497,291 @@ export async function createSurvey(formData: FormData) {
   }
 }
 
+export async function importSurveysFromMarkdown(formData: FormData) {
+  const userId = formData.get('userId')?.toString();
+  const content = formData.get('content')?.toString();
+
+  if (!userId || !content) {
+    return { success: false, message: '必要な情報が不足しています。' };
+  }
+
+  if (!isSupabaseConfigured()) {
+    return { success: false, message: 'Supabase未設定のため処理できません。' };
+  }
+
+  try {
+    // Markdownパース（簡易実装）
+    // TODO: より高度なMarkdownパーサーを実装
+    const lines = content.split('\n').map((line) => line.trim()).filter((line) => line);
+    const surveys: any[] = [];
+    let currentSurvey: any = null;
+    let currentQuestion: any = null;
+
+    for (const line of lines) {
+      if (line.startsWith('# ')) {
+        // 新しいアンケート
+        if (currentSurvey) {
+          surveys.push(currentSurvey);
+        }
+        currentSurvey = {
+          title: line.substring(2).trim(),
+          description: '',
+          category: 'daily',
+          rewardPoints: 30,
+          deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          questions: []
+        };
+        currentQuestion = null;
+      } else if (line.startsWith('## ')) {
+        // 新しい質問
+        if (currentSurvey) {
+          if (currentQuestion) {
+            currentSurvey.questions.push(currentQuestion);
+          }
+          currentQuestion = {
+            questionText: line.substring(3).trim(),
+            questionType: 'single_choice' as QuestionType,
+            isRequired: true,
+            displayOrder: currentSurvey.questions.length,
+            options: []
+          };
+        }
+      } else if (line.startsWith('- [ ] ') || line.startsWith('- ')) {
+        // 選択肢
+        if (currentQuestion) {
+          const optionText = line.replace(/^- \[ \] /, '').replace(/^- /, '').trim();
+          if (optionText) {
+            currentQuestion.options.push({
+              id: `opt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              optionText
+            });
+          }
+        }
+      } else if (line && currentSurvey && !currentQuestion) {
+        // 説明文
+        if (currentSurvey.description) {
+          currentSurvey.description += '\n' + line;
+        } else {
+          currentSurvey.description = line;
+        }
+      }
+    }
+
+    // 最後のアンケートと質問を追加
+    if (currentQuestion && currentSurvey) {
+      currentSurvey.questions.push(currentQuestion);
+    }
+    if (currentSurvey) {
+      surveys.push(currentSurvey);
+    }
+
+    if (surveys.length === 0) {
+      return { success: false, message: '有効なアンケートが見つかりませんでした。' };
+    }
+
+    // アンケートを保存
+    const supabase = getSupabaseServiceRole();
+    const createdIds: string[] = [];
+
+    for (const survey of surveys) {
+      const surveyId = randomUUID();
+      const deadlineDate = new Date(survey.deadline);
+
+      const { error: surveyError } = await supabase.from('surveys').insert({
+        id: surveyId,
+        title: survey.title,
+        category: survey.category || 'daily',
+        reward_points: survey.rewardPoints || 30,
+        questions: survey.questions.length,
+        status: 'open',
+        deadline: deadlineDate.toISOString(),
+        delivery_channels: ['web'],
+        target_tags: [],
+        ai_matching_score: 0
+      } as any);
+
+      if (surveyError) {
+        console.error('アンケート作成エラー:', surveyError);
+        continue;
+      }
+
+      // 質問を保存
+      try {
+        for (const question of survey.questions) {
+          const questionId = randomUUID();
+
+          await (supabase as any).from('survey_questions').insert({
+            id: questionId,
+            survey_id: surveyId,
+            question_text: question.questionText,
+            question_type: question.questionType,
+            is_required: question.isRequired,
+            display_order: question.displayOrder,
+            created_at: new Date().toISOString()
+          });
+
+          // 選択肢を保存
+          if (question.options && question.options.length > 0) {
+            const optionRecords = question.options.map((option: any, index: number) => ({
+              id: randomUUID(),
+              question_id: questionId,
+              option_text: option.optionText,
+              display_order: index,
+              created_at: new Date().toISOString()
+            }));
+
+            await (supabase as any).from('survey_question_options').insert(optionRecords);
+          }
+        }
+      } catch (err) {
+        console.warn('質問・選択肢の保存に失敗:', err);
+      }
+
+      createdIds.push(surveyId);
+    }
+
+    revalidatePath('/client');
+    return {
+      success: true,
+      message: `${createdIds.length}件のアンケートを作成しました！`,
+      count: createdIds.length
+    };
+  } catch (error) {
+    console.error('Markdownインポートエラー:', error);
+    return { success: false, message: 'Markdownのインポートに失敗しました。もう一度お試しください。' };
+  }
+}
+
+export async function importSurveysFromCsv(formData: FormData) {
+  const userId = formData.get('userId')?.toString();
+  const file = formData.get('file') as File;
+
+  if (!userId || !file) {
+    return { success: false, message: '必要な情報が不足しています。' };
+  }
+
+  if (!isSupabaseConfigured()) {
+    return { success: false, message: 'Supabase未設定のため処理できません。' };
+  }
+
+  try {
+    // CSVファイルを読み込む
+    const text = await file.text();
+    const lines = text.split('\n').filter((line) => line.trim());
+    
+    if (lines.length < 2) {
+      return { success: false, message: 'CSVファイルに有効なデータがありません。' };
+    }
+
+    // ヘッダー行を取得
+    const headers = lines[0].split(',').map((h) => h.trim());
+    const questionTextIndex = headers.indexOf('question_text');
+    const questionTypeIndex = headers.indexOf('question_type');
+    const isRequiredIndex = headers.indexOf('is_required');
+    
+    if (questionTextIndex === -1) {
+      return { success: false, message: 'CSVファイルにquestion_textカラムが見つかりません。' };
+    }
+
+    // 質問データをパース
+    const questions: any[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map((v) => v.trim().replace(/^"|"$/g, ''));
+      
+      if (values[questionTextIndex]) {
+        const questionType = (values[questionTypeIndex] || 'single_choice') as QuestionType;
+        const options: any[] = [];
+        
+        // 選択肢を取得（option_1, option_2, ...）
+        for (let j = 0; j < headers.length; j++) {
+          if (headers[j].startsWith('option_') && values[j]) {
+            options.push({
+              id: `opt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              optionText: values[j]
+            });
+          }
+        }
+
+        questions.push({
+          questionText: values[questionTextIndex],
+          questionType,
+          isRequired: values[isRequiredIndex]?.toLowerCase() !== 'false',
+          displayOrder: questions.length,
+          options
+        });
+      }
+    }
+
+    if (questions.length === 0) {
+      return { success: false, message: '有効な質問が見つかりませんでした。' };
+    }
+
+    // アンケートを作成
+    const supabase = getSupabaseServiceRole();
+    const surveyId = randomUUID();
+    const deadline = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const { error: surveyError } = await supabase.from('surveys').insert({
+      id: surveyId,
+      title: `CSVインポート: ${new Date().toLocaleDateString()}`,
+      category: 'daily',
+      reward_points: 30,
+      questions: questions.length,
+      status: 'open',
+      deadline: deadline.toISOString(),
+      delivery_channels: ['web'],
+      target_tags: [],
+      ai_matching_score: 0
+    } as any);
+
+    if (surveyError) {
+      return { success: false, message: 'アンケートの作成に失敗しました。' };
+    }
+
+    // 質問を保存
+    try {
+      for (const question of questions) {
+        const questionId = randomUUID();
+
+        await (supabase as any).from('survey_questions').insert({
+          id: questionId,
+          survey_id: surveyId,
+          question_text: question.questionText,
+          question_type: question.questionType,
+          is_required: question.isRequired,
+          display_order: question.displayOrder,
+          created_at: new Date().toISOString()
+        });
+
+        // 選択肢を保存
+        if (question.options && question.options.length > 0) {
+          const optionRecords = question.options.map((option: any, index: number) => ({
+            id: randomUUID(),
+            question_id: questionId,
+            option_text: option.optionText,
+            display_order: index,
+            created_at: new Date().toISOString()
+          }));
+
+          await (supabase as any).from('survey_question_options').insert(optionRecords);
+        }
+      }
+    } catch (err) {
+      console.warn('質問・選択肢の保存に失敗:', err);
+    }
+
+    revalidatePath('/client');
+    return {
+      success: true,
+      message: `${questions.length}問のアンケートを作成しました！`,
+      surveyId
+    };
+  } catch (error) {
+    console.error('CSVインポートエラー:', error);
+    return { success: false, message: 'CSVのインポートに失敗しました。もう一度お試しください。' };
+  }
+}
+
 export async function regenerateReferralCode(userId: string) {
   const newCode = `KOECAN-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
   if (isSupabaseConfigured()) {
