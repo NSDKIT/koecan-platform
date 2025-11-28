@@ -11,7 +11,9 @@ interface SurveyQuestion {
   questionType: QuestionType;
   isRequired: boolean;
   displayOrder: number;
-  options: { id: string; optionText: string }[];
+  options: { id: string; optionText: string; isCorrect?: boolean }[];
+  correctAnswerText?: string;
+  correctAnswerNumber?: number;
 }
 
 interface SurveyCreateFormProps {
@@ -80,18 +82,42 @@ export function SurveyCreateForm({ userId }: SurveyCreateFormProps) {
     );
   };
 
-  const updateOption = (questionId: string, optionId: string, optionText: string) => {
+  const updateOption = (questionId: string, optionId: string, optionText: string, isCorrect?: boolean) => {
     setQuestions(
       questions.map((q) => {
         if (q.id === questionId) {
           return {
             ...q,
-            options: q.options.map((opt) => (opt.id === optionId ? { ...opt, optionText } : opt))
+            options: q.options.map((opt) => {
+              if (opt.id === optionId) {
+                const updated = { ...opt, optionText };
+                if (isCorrect !== undefined) {
+                  updated.isCorrect = isCorrect;
+                }
+                return updated;
+              }
+              // single_choiceの場合は他の選択肢の正解を解除
+              if (q.questionType === 'single_choice' && isCorrect === true) {
+                return { ...opt, isCorrect: false };
+              }
+              return opt;
+            })
           };
         }
         return q;
       })
     );
+  };
+
+  const toggleOptionCorrect = (questionId: string, optionId: string) => {
+    const question = questions.find(q => q.id === questionId);
+    if (!question) return;
+
+    const option = question.options.find(opt => opt.id === optionId);
+    if (!option) return;
+
+    const newIsCorrect = !option.isCorrect;
+    updateOption(questionId, optionId, option.optionText, newIsCorrect);
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -335,6 +361,15 @@ export function SurveyCreateForm({ userId }: SurveyCreateFormProps) {
                               placeholder="選択肢を入力"
                               style={{ flex: 1 }}
                             />
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                              <input
+                                type={question.questionType === 'single_choice' ? 'radio' : 'checkbox'}
+                                checked={option.isCorrect || false}
+                                onChange={() => toggleOptionCorrect(question.id, option.id)}
+                                name={question.questionType === 'single_choice' ? `correct-${question.id}` : undefined}
+                              />
+                              <span style={{ fontSize: '0.875rem', whiteSpace: 'nowrap' }}>正解</span>
+                            </label>
                             <button
                               type="button"
                               className="button ghost"
@@ -351,6 +386,38 @@ export function SurveyCreateForm({ userId }: SurveyCreateFormProps) {
                           </p>
                         )}
                       </div>
+                    </div>
+                  )}
+
+                  {question.questionType === 'text' && (
+                    <div className="form-group">
+                      <label>正解（テキスト回答）</label>
+                      <input
+                        type="text"
+                        value={question.correctAnswerText || ''}
+                        onChange={(e) => updateQuestion(question.id, { correctAnswerText: e.target.value })}
+                        placeholder="正解のテキストを入力（クイズの場合）"
+                        style={{ width: '100%' }}
+                      />
+                      <p style={{ color: '#64748b', fontSize: '0.875rem', margin: '0.25rem 0 0 0' }}>
+                        正解を設定すると、このアンケートはクイズとして扱われます（空欄の場合は通常のアンケート）
+                      </p>
+                    </div>
+                  )}
+
+                  {question.questionType === 'number' && (
+                    <div className="form-group">
+                      <label>正解（数値回答）</label>
+                      <input
+                        type="number"
+                        value={question.correctAnswerNumber || ''}
+                        onChange={(e) => updateQuestion(question.id, { correctAnswerNumber: e.target.value ? parseInt(e.target.value, 10) : undefined })}
+                        placeholder="正解の数値を入力（クイズの場合）"
+                        style={{ width: '100%' }}
+                      />
+                      <p style={{ color: '#64748b', fontSize: '0.875rem', margin: '0.25rem 0 0 0' }}>
+                        正解を設定すると、このアンケートはクイズとして扱われます（空欄の場合は通常のアンケート）
+                      </p>
                     </div>
                   )}
                 </div>

@@ -388,19 +388,21 @@ export async function fetchSurveyDetail(surveyId: string, userId?: string): Prom
     // 現時点では、これらのテーブルが存在しない可能性があるため、モックデータを返す
     const survey = mapSurvey(surveyData);
     
-    // 回答済みかどうかをチェック
+    // 回答済みかどうかをチェック（ポイントが付与された回答がある場合のみ回答済みとする）
+    // 不正解の場合は再チャレンジ可能にするため、ポイントが付与されていない回答は回答済みとして扱わない
     let hasAnswered = false;
     if (userId) {
       try {
         const { data: responseData } = await (supabase as any)
           .from('survey_responses')
-          .select('id')
+          .select('id, points_awarded')
           .eq('survey_id', surveyId)
           .eq('user_id', userId)
+          .eq('points_awarded', true) // ポイントが付与された回答のみをチェック
           .single();
         hasAnswered = !!responseData;
       } catch (err) {
-        // テーブルが存在しない場合は未回答として扱う
+        // テーブルが存在しない、またはポイント付与された回答がない場合は未回答として扱う
         hasAnswered = false;
       }
     }
@@ -422,10 +424,13 @@ export async function fetchSurveyDetail(surveyId: string, userId?: string): Prom
           questionType: q.question_type,
           isRequired: q.is_required,
           displayOrder: q.display_order,
+          correctAnswerText: q.correct_answer_text || undefined,
+          correctAnswerNumber: q.correct_answer_number || undefined,
           options: (q.survey_question_options || []).map((opt: any, index: number) => ({
             id: opt.id,
             optionText: opt.option_text,
-            displayOrder: opt.display_order || index
+            displayOrder: opt.display_order || index,
+            isCorrect: opt.is_correct || false
           }))
         }));
       }

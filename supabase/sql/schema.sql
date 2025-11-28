@@ -137,6 +137,8 @@ create table if not exists survey_questions (
   question_type varchar(50) not null, -- 'single_choice', 'multiple_choice', 'text', 'number', 'rating'
   is_required boolean default true,
   display_order integer default 0,
+  correct_answer_text text, -- テキスト回答の場合の正解
+  correct_answer_number integer, -- 数値回答の場合の正解
   created_at timestamptz default now()
 );
 
@@ -146,6 +148,7 @@ create table if not exists survey_question_options (
   question_id uuid not null references survey_questions(id) on delete cascade,
   option_text text not null,
   display_order integer default 0,
+  is_correct boolean default false, -- この選択肢が正解かどうか
   created_at timestamptz default now()
 );
 
@@ -155,7 +158,9 @@ create table if not exists survey_responses (
   survey_id uuid not null references surveys(id) on delete cascade,
   user_id uuid not null, -- references auth.users(id) on delete cascade (手動でリンク)
   submitted_at timestamptz default now(),
-  unique(survey_id, user_id) -- 1ユーザー1回答
+  is_all_correct boolean default false, -- 全問正解かどうか
+  points_awarded boolean default false -- ポイントが付与されたかどうか（重複付与を防ぐ）
+  -- UNIQUE制約を削除して再チャレンジ可能に（複数回回答できるようにする）
 );
 
 -- 個別回答テーブル

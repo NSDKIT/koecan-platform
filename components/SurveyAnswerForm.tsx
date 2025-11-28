@@ -124,8 +124,14 @@ export function SurveyAnswerForm({ survey, userId }: SurveyAnswerFormProps) {
         return;
       }
 
-      // 成功時はダッシュボードにリダイレクト
-      router.push(`/dashboard?message=survey_completed&points=${survey.rewardPoints}`);
+      // 全問正解の場合のみダッシュボードにリダイレクト
+      // 不正解の場合はエラーメッセージを表示して再チャレンジ可能にする
+      if (result.message?.includes('全問正解')) {
+        router.push(`/dashboard?message=survey_completed&points=${survey.rewardPoints}`);
+      } else {
+        setError(result.message || '回答の送信に失敗しました');
+        setIsSubmitting(false);
+      }
     } catch (err) {
       setError('回答の送信に失敗しました。もう一度お試しください。');
       setIsSubmitting(false);

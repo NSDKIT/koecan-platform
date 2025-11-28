@@ -137,6 +137,7 @@ export interface SurveyQuestionOption {
   id: string;
   optionText: string;
   displayOrder: number;
+  isCorrect?: boolean; // この選択肢が正解かどうか
 }
 
 export interface SurveyQuestion {
@@ -147,6 +148,8 @@ export interface SurveyQuestion {
   isRequired: boolean;
   displayOrder: number;
   options: SurveyQuestionOption[];
+  correctAnswerText?: string; // テキスト回答の場合の正解
+  correctAnswerNumber?: number; // 数値回答の場合の正解
 }
 
 export interface SurveyDetail extends Omit<Survey, 'questions'> {

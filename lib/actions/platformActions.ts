@@ -1023,24 +1023,6 @@ export async function submitSurveyResponse(formData: FormData) {
 
     const supabase = getSupabaseServiceRole();
 
-    // 既に回答済みかチェック（テーブルが存在する場合）
-    let existingResponse: any = null;
-    try {
-      const result = await (supabase as any)
-        .from('survey_responses')
-        .select('id')
-        .eq('survey_id', surveyId)
-        .eq('user_id', userId)
-        .single();
-      existingResponse = result.data;
-    } catch (err) {
-      // テーブルが存在しない場合はスキップ
-    }
-
-    if (existingResponse) {
-      return { success: false, message: '既にこのアンケートに回答済みです。' };
-    }
-
     // アンケート情報を取得
     const { data: survey, error: surveyError } = await supabase
       .from('surveys')
@@ -1058,22 +1040,94 @@ export async function submitSurveyResponse(formData: FormData) {
       return { success: false, message: '回答期限を過ぎています。' };
     }
 
-    // トランザクション開始（survey_responsesテーブルが存在する場合）
+    // 質問と正解を取得（クイズとして正解チェックを行う）
+    let questions: any[] = [];
+    try {
+      const { data: questionData, error: questionError } = await (supabase as any)
+        .from('survey_questions')
+        .select('*, survey_question_options(*)')
+        .eq('survey_id', surveyId)
+        .order('display_order', { ascending: true });
+
+      if (!questionError && questionData) {
+        questions = questionData.map((q: any) => ({
+          id: q.id,
+          questionType: q.question_type,
+          correctAnswerText: q.correct_answer_text,
+          correctAnswerNumber: q.correct_answer_number,
+          options: (q.survey_question_options || []).map((opt: any) => ({
+            id: opt.id,
+            isCorrect: opt.is_correct || false
+          }))
+        }));
+      }
+    } catch (err) {
+      console.warn('質問データの取得に失敗:', err);
+    }
+
+    // 全問正解チェック
+    let isAllCorrect = true;
+    if (questions.length > 0) {
+      for (const question of questions) {
+        const userAnswer = answers.find(a => a.questionId === question.id);
+        if (!userAnswer) {
+          isAllCorrect = false;
+          break;
+        }
+
+        let isCorrect = false;
+        
+        if (question.questionType === 'single_choice') {
+          // 単一選択: 選択した選択肢が正解かチェック
+          if (userAnswer.selectedOptionIds && userAnswer.selectedOptionIds.length > 0) {
+            const selectedOptionId = userAnswer.selectedOptionIds[0];
+            const selectedOption = question.options.find((opt: any) => opt.id === selectedOptionId);
+            isCorrect = selectedOption?.isCorrect === true;
+          }
+        } else if (question.questionType === 'multiple_choice') {
+          // 複数選択: すべての選択肢が正解で、かつすべての正解を選択しているかチェック
+          const correctOptionIds = question.options.filter((opt: any) => opt.isCorrect).map((opt: any) => opt.id);
+          const selectedOptionIds = userAnswer.selectedOptionIds || [];
+          
+          if (correctOptionIds.length === selectedOptionIds.length) {
+            isCorrect = correctOptionIds.every(id => selectedOptionIds.includes(id));
+          }
+        } else if (question.questionType === 'text' && question.correctAnswerText) {
+          // テキスト回答: 完全一致（大文字小文字を区別しない）
+          isCorrect = userAnswer.answerText?.trim().toLowerCase() === question.correctAnswerText.trim().toLowerCase();
+        } else if (question.questionType === 'number' && question.correctAnswerNumber !== undefined && question.correctAnswerNumber !== null) {
+          // 数値回答: 完全一致
+          isCorrect = userAnswer.answerNumber === question.correctAnswerNumber;
+        } else {
+          // 正解が設定されていない場合は正解として扱う（通常のアンケート）
+          isCorrect = true;
+        }
+
+        if (!isCorrect) {
+          isAllCorrect = false;
+          break;
+        }
+      }
+    } else {
+      // 質問がない場合は正解として扱う
+      isAllCorrect = true;
+    }
+
     // 回答を保存
     const responseId = randomUUID();
     
-    // survey_responsesテーブルに回答を保存（テーブルが存在する場合）
-    // 現時点では、テーブルが存在しない可能性があるため、エラーハンドリングを追加
+    // survey_responsesテーブルに回答を保存
     let responseError: any = null;
     try {
-      // 型定義に存在しないテーブルのため、型アサーションを使用
       const { error } = await (supabase as any)
         .from('survey_responses')
         .insert({
           id: responseId,
           survey_id: surveyId,
           user_id: userId,
-          submitted_at: new Date().toISOString()
+          submitted_at: new Date().toISOString(),
+          is_all_correct: isAllCorrect,
+          points_awarded: false // 後で更新する
         });
       responseError = error;
     } catch (err) {
@@ -1081,7 +1135,6 @@ export async function submitSurveyResponse(formData: FormData) {
     }
 
     if (responseError && !String(responseError).includes('does not exist')) {
-      // テーブルが存在しない場合はスキップ（開発中のため）
       console.warn('survey_responsesテーブルへの保存に失敗:', responseError);
     }
 
@@ -1123,9 +1176,11 @@ export async function submitSurveyResponse(formData: FormData) {
       }
     }
 
-    // ポイント付与
+    // 全問正解の場合のみポイント付与
     const rewardPoints = survey.reward_points || 30;
+    let pointsAwarded = false;
     
+    if (isAllCorrect) {
     // monitor_profilesテーブルから現在のポイントを取得
     const { data: profile } = await supabase
       .from('monitor_profiles')
@@ -1144,8 +1199,8 @@ export async function submitSurveyResponse(formData: FormData) {
 
     if (pointsError) {
       console.error('ポイント更新に失敗:', pointsError);
-      // ポイント更新に失敗しても回答は保存済みなので、警告のみ
-    }
+      } else {
+        pointsAwarded = true;
 
     // ポイント履歴を記録
     const { error: historyError } = await supabase
@@ -1156,15 +1211,34 @@ export async function submitSurveyResponse(formData: FormData) {
         happened_at: new Date().toISOString(),
         amount: rewardPoints,
         reason: 'survey',
-        description: `アンケート回答: ${surveyId}`
+            description: `アンケート回答（全問正解）: ${surveyId}`
       });
 
     if (historyError && !historyError.message.includes('does not exist')) {
       console.warn('ポイント履歴の記録に失敗:', historyError);
+        }
+
+        // survey_responsesのpoints_awardedフラグを更新
+        try {
+          await (supabase as any)
+            .from('survey_responses')
+            .update({ points_awarded: true })
+            .eq('id', responseId);
+        } catch (err) {
+          console.warn('points_awardedフラグの更新に失敗:', err);
+        }
+      }
     }
 
     revalidatePath('/dashboard');
-    return { success: true, message: `${rewardPoints}pt獲得しました！` };
+    
+    if (isAllCorrect && pointsAwarded) {
+      return { success: true, message: `全問正解です！${rewardPoints}pt獲得しました！` };
+    } else if (isAllCorrect) {
+      return { success: true, message: '全問正解です！ただし、ポイントの付与に失敗しました。' };
+    } else {
+      return { success: false, message: '不正解があります。もう一度チャレンジしてください！' };
+    }
   } catch (error) {
     console.error('アンケート回答送信エラー:', error);
     return { success: false, message: '回答の送信に失敗しました。もう一度お試しください。' };
@@ -1195,7 +1269,9 @@ export async function createSurvey(formData: FormData) {
       questionType: QuestionType;
       isRequired: boolean;
       displayOrder: number;
-      options: Array<{ id: string; optionText: string }>;
+      options: Array<{ id: string; optionText: string; isCorrect?: boolean }>;
+      correctAnswerText?: string;
+      correctAnswerNumber?: number;
     }>;
 
     if (!Array.isArray(questions) || questions.length === 0) {
@@ -1231,7 +1307,7 @@ export async function createSurvey(formData: FormData) {
         const questionId = randomUUID();
 
         // survey_questionsテーブルに保存
-        const { error: questionError } = await (supabase as any).from('survey_questions').insert({
+        const questionRecord: any = {
           id: questionId,
           survey_id: surveyId,
           question_text: question.questionText,
@@ -1239,7 +1315,17 @@ export async function createSurvey(formData: FormData) {
           is_required: question.isRequired,
           display_order: question.displayOrder,
           created_at: new Date().toISOString()
-        });
+        };
+
+        // 正解情報を追加（テキスト/数値回答の場合）
+        if (question.correctAnswerText !== undefined) {
+          questionRecord.correct_answer_text = question.correctAnswerText || null;
+        }
+        if (question.correctAnswerNumber !== undefined) {
+          questionRecord.correct_answer_number = question.correctAnswerNumber || null;
+        }
+
+        const { error: questionError } = await (supabase as any).from('survey_questions').insert(questionRecord);
 
         if (questionError && !String(questionError).includes('does not exist')) {
           console.warn('質問の保存に失敗:', questionError);
@@ -1256,6 +1342,7 @@ export async function createSurvey(formData: FormData) {
             question_id: questionId,
             option_text: option.optionText,
             display_order: index,
+            is_correct: option.isCorrect || false,
             created_at: new Date().toISOString()
           }));
 
@@ -1317,6 +1404,20 @@ export async function importSurveysFromMarkdown(formData: FormData) {
         // 新しい質問
         if (currentSurvey) {
           if (currentQuestion) {
+            // 前の質問を確定する前に、正解の数で質問タイプを決定
+            const correctCount = currentQuestion.options.filter((opt: any) => opt.isCorrect).length;
+            const hasOptions = currentQuestion.options.length > 0;
+            
+            if (hasOptions) {
+              if (correctCount > 1) {
+                // 正解が2つ以上ある場合は複数選択に変更
+                currentQuestion.questionType = 'multiple_choice';
+              } else if (correctCount === 1) {
+                // 正解が1つで選択肢がある場合は単一選択のまま
+                currentQuestion.questionType = 'single_choice';
+              }
+              // correctCount === 0 の場合は通常のアンケート（single_choiceのまま）
+            }
             currentSurvey.questions.push(currentQuestion);
           }
           currentQuestion = {
@@ -1327,15 +1428,46 @@ export async function importSurveysFromMarkdown(formData: FormData) {
             options: []
           };
         }
+      } else if (line.startsWith('- [x] ') || line.startsWith('- [X] ')) {
+        // 正解の選択肢
+        if (currentQuestion) {
+          const optionText = line.replace(/^- \[[xX]\] /, '').trim();
+          if (optionText) {
+            currentQuestion.options.push({
+              id: `opt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              optionText,
+              isCorrect: true
+            });
+          }
+        }
       } else if (line.startsWith('- [ ] ') || line.startsWith('- ')) {
-        // 選択肢
+        // 選択肢（不正解または通常のアンケート）
         if (currentQuestion) {
           const optionText = line.replace(/^- \[ \] /, '').replace(/^- /, '').trim();
           if (optionText) {
             currentQuestion.options.push({
               id: `opt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              optionText
+              optionText,
+              isCorrect: false
             });
+          }
+        }
+      } else if (line.toLowerCase().startsWith('正解: ') || line.toLowerCase().startsWith('答え: ')) {
+        // テキスト/数値問題の正解
+        if (currentQuestion) {
+          const answerText = line.replace(/^(正解|答え):\s*/i, '').trim();
+          // 数値としてパースできる場合は数値問題、そうでなければテキスト問題
+          const numValue = parseInt(answerText, 10);
+          if (!isNaN(numValue) && answerText === numValue.toString()) {
+            // 純粋な数値の場合
+            currentQuestion.questionType = 'number';
+            currentQuestion.correctAnswerNumber = numValue;
+          } else {
+            // テキストの場合
+            if (currentQuestion.questionType === 'single_choice') {
+              currentQuestion.questionType = 'text';
+            }
+            currentQuestion.correctAnswerText = answerText;
           }
         }
       } else if (line && currentSurvey && !currentQuestion) {
@@ -1350,6 +1482,20 @@ export async function importSurveysFromMarkdown(formData: FormData) {
 
     // 最後のアンケートと質問を追加
     if (currentQuestion && currentSurvey) {
+      // 最後の質問を確定する前に、正解の数で質問タイプを決定
+      const correctCount = currentQuestion.options.filter((opt: any) => opt.isCorrect).length;
+      const hasOptions = currentQuestion.options.length > 0;
+      
+      if (hasOptions) {
+        if (correctCount > 1) {
+          // 正解が2つ以上ある場合は複数選択に変更
+          currentQuestion.questionType = 'multiple_choice';
+        } else if (correctCount === 1) {
+          // 正解が1つで選択肢がある場合は単一選択のまま
+          currentQuestion.questionType = 'single_choice';
+        }
+        // correctCount === 0 の場合は通常のアンケート（single_choiceのまま）
+      }
       currentSurvey.questions.push(currentQuestion);
     }
     if (currentSurvey) {
@@ -1391,7 +1537,7 @@ export async function importSurveysFromMarkdown(formData: FormData) {
         for (const question of survey.questions) {
           const questionId = randomUUID();
 
-          await (supabase as any).from('survey_questions').insert({
+          const questionRecord: any = {
             id: questionId,
             survey_id: surveyId,
             question_text: question.questionText,
@@ -1399,7 +1545,17 @@ export async function importSurveysFromMarkdown(formData: FormData) {
             is_required: question.isRequired,
             display_order: question.displayOrder,
             created_at: new Date().toISOString()
-          });
+          };
+
+          // 正解情報を追加
+          if (question.correctAnswerText !== undefined) {
+            questionRecord.correct_answer_text = question.correctAnswerText || null;
+          }
+          if (question.correctAnswerNumber !== undefined) {
+            questionRecord.correct_answer_number = question.correctAnswerNumber || null;
+          }
+
+          await (supabase as any).from('survey_questions').insert(questionRecord);
 
           // 選択肢を保存
           if (question.options && question.options.length > 0) {
@@ -1408,6 +1564,7 @@ export async function importSurveysFromMarkdown(formData: FormData) {
               question_id: questionId,
               option_text: option.optionText,
               display_order: index,
+              is_correct: option.isCorrect || false,
               created_at: new Date().toISOString()
             }));
 
@@ -1459,6 +1616,11 @@ export async function importSurveysFromCsv(formData: FormData) {
     const questionTextIndex = headers.indexOf('question_text');
     const questionTypeIndex = headers.indexOf('question_type');
     const isRequiredIndex = headers.indexOf('is_required');
+    const correctOption1Index = headers.indexOf('correct_option_1');
+    const correctOption2Index = headers.indexOf('correct_option_2');
+    const correctAnswerTextIndex = headers.indexOf('correct_answer_text');
+    const correctAnswerNumberIndex = headers.indexOf('correct_answer_number');
+    const surveyTitleIndex = headers.indexOf('survey_title');
     
     if (questionTextIndex === -1) {
       return { success: false, message: 'CSVファイルにquestion_textカラムが見つかりません。' };
